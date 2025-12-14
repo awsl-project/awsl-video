@@ -1,0 +1,10 @@
+venv/
+frontend/node_modules/
+videos.db
+backend/videos.db
+backend/__pycache__/
+backend/routes/__pycache__/
+__pycache__/
+*.pyc
+.env
+.DS_Store

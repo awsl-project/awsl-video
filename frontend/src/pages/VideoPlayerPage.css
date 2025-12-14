@@ -1,0 +1,118 @@
+.video-player-page {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.breadcrumb {
+  margin-bottom: 16px;
+}
+
+.player-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.player-wrapper {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  position: relative;
+}
+
+.video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.no-episode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #ccc;
+}
+
+.video-info {
+  border-radius: 8px;
+}
+
+.current-episode-info {
+  margin-bottom: 16px;
+}
+
+.current-episode-info h3 {
+  color: #00a1d6;
+  margin-bottom: 8px;
+}
+
+.description {
+  color: #666;
+  line-height: 1.6;
+}
+
+.episodes-container {
+  margin-top: 24px;
+}
+
+.episodes-card {
+  border-radius: 8px;
+}
+
+.episode-item {
+  cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.episode-item:hover {
+  background-color: #f5f5f5;
+}
+
+.episode-item.active {
+  background-color: #e6f7ff;
+  border-left: 3px solid #00a1d6;
+}
+
+.episode-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.episode-number {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #00a1d6;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.episode-title {
+  flex: 1;
+  font-size: 14px;
+}
+
+.episode-duration {
+  color: #999;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .episode-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .episode-number {
+    min-width: auto;
+  }
+}
