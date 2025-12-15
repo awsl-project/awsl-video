@@ -31,38 +31,37 @@
 - **AWSL Telegram Storage** - 视频文件存储
 
 ### 前端
-- **React 19** - UI 框架
-- **TypeScript** - 类型安全
-- **Vite** - 构建工具
-- **React Router** - 路由管理
-- **shadcn/ui** - UI 组件库
-- **Tailwind CSS v4** - 样式框架
-- **Axios** - HTTP 客户端
+- **React 19.2** - UI 框架
+- **TypeScript 5.9** - 类型安全
+- **Vite 7.2** - 构建工具
+- **React Router 7.10** - 路由管理
+- **shadcn/ui** - UI 组件库（基于 Radix UI）
+- **Tailwind CSS v4.1** - 样式框架
+- **Axios 1.13** - HTTP 客户端
+- **Lucide React** - 图标库
 
 ## 项目结构
 
 ```
 awsl-video/
 ├── main.py                  # Vercel 入口点
-├── requirements.txt         # Python 依赖（根目录）
+├── requirements.txt         # Python 依赖
 ├── vercel.json             # Vercel 部署配置
-├── .vercelignore           # Vercel 忽略文件
 │
 ├── backend/                # 后端代码
-│   ├── app/
-│   │   ├── routes/        # API 路由
-│   │   │   ├── admin.py   # 管理员 API (/admin-api/*)
-│   │   │   ├── user.py    # 用户 API (/api/*)
-│   │   │   └── auth.py    # 认证 API (/admin-api/auth/*)
-│   │   ├── models.py      # 数据库模型
-│   │   ├── schemas.py     # Pydantic 模型
-│   │   ├── database.py    # 数据库配置
-│   │   ├── auth.py        # JWT 认证
-│   │   ├── storage.py     # Telegram 存储客户端
-│   │   ├── config.py      # 配置
-│   │   └── main.py        # FastAPI 应用
-│   ├── requirements.txt   # Python 依赖（备份）
-│   └── .env.example       # 环境变量示例
+│   ├── routes/            # API 路由
+│   │   ├── __init__.py
+│   │   ├── admin.py       # 管理员 API (/admin-api/*)
+│   │   ├── user.py        # 用户 API (/api/*)
+│   │   └── auth.py        # 认证 API (/admin-api/auth/*)
+│   ├── __init__.py
+│   ├── main.py            # FastAPI 应用
+│   ├── models.py          # 数据库模型
+│   ├── schemas.py         # Pydantic 模型
+│   ├── database.py        # 数据库配置
+│   ├── auth.py            # JWT 认证
+│   ├── storage.py         # Telegram 存储客户端
+│   └── config.py          # 配置管理
 │
 └── frontend/              # 前端代码
     ├── src/
@@ -72,12 +71,17 @@ awsl-video/
     │   │   ├── LoginPage.tsx       # 登录页
     │   │   └── AdminPage.tsx       # 管理页
     │   ├── components/    # UI 组件
-    │   │   └── ui/       # shadcn/ui 组件
+    │   │   ├── Header.tsx          # 头部组件
+    │   │   └── ui/                 # shadcn/ui 组件库
+    │   ├── hooks/         # React Hooks
+    │   ├── lib/           # 工具函数
     │   ├── api.ts         # API 客户端
     │   ├── App.tsx        # 主应用
     │   └── main.tsx       # 入口文件
+    ├── public/
     ├── package.json
-    └── vite.config.ts
+    ├── vite.config.ts
+    └── components.json    # shadcn/ui 配置
 ```
 
 ## 快速开始
@@ -92,12 +96,7 @@ awsl-video/
 
 ### 后端设置
 
-1. 进入后端目录：
-```bash
-cd backend
-```
-
-2. 创建并激活虚拟环境：
+1. 创建并激活虚拟环境：
 
 **Linux/Mac:**
 ```bash
@@ -111,16 +110,31 @@ python -m venv venv
 venv\Scripts\activate
 ```
 
-3. 安装依赖：
+2. 安装依赖：
 ```bash
 pip install -r requirements.txt
 ```
 
-4. 配置环境变量：
+3. 配置环境变量：
 ```bash
-cp .env.example .env
-# 编辑 .env 文件，填入实际配置
+# 在项目根目录创建 .env 文件
+touch .env
+# 编辑 .env 文件，填入以下配置
 ```
+
+**.env 示例：**
+```env
+SECRET_KEY=your-secret-key-here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-password
+AWSL_TELEGRAM_STORAGE_URL=https://assets.awsl.icu
+AWSL_TELEGRAM_API_TOKEN=your-token
+AWSL_TELEGRAM_CHAT_ID=your-chat-id
+DATABASE_URL=sqlite+aiosqlite:///./videos.db
+DEBUG=false
+```
+
+> **注意**：.env 文件应放在项目根目录下，不要放在 backend 目录中。
 
 **环境变量说明：**
 - `SECRET_KEY`: JWT 密钥（建议使用随机字符串）
@@ -132,11 +146,18 @@ cp .env.example .env
 - `DATABASE_URL`: 数据库连接字符串
   - **SQLite（本地开发）**: `sqlite+aiosqlite:///./videos.db`
   - **PostgreSQL（生产环境）**: `postgresql+asyncpg://user:password@host:5432/dbname?ssl=require`
+- `DEBUG`: 调试模式（可选，默认 false）
 
-5. 运行后端：
+4. 运行后端：
+
+**方式一（推荐）**：
 ```bash
-cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python main.py
+```
+
+**方式二（开发模式，支持热重载）**：
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 后端将在 http://localhost:8000 运行
@@ -159,9 +180,18 @@ npm install
 ```
 
 3. 配置环境变量：
+
+**开发环境 (.env)**：
 ```bash
-# 创建 .env 文件，配置后端 API 地址
+cd frontend
+# .env 文件已存在，配置如下
 VITE_API_BASE_URL=http://localhost:8000
+```
+
+**生产环境 (.env.prod)**：
+```bash
+# 生产环境留空，会使用相对路径
+VITE_API_BASE_URL=
 ```
 
 4. 运行前端：
@@ -284,14 +314,16 @@ npm run dev
 
 ## 技术特性
 
-- ✅ 异步数据库操作（asyncpg）
-- ✅ 视频流式传输，支持 Range 请求
-- ✅ JWT 认证保护管理员接口
-- ✅ 自动视频分片存储
-- ✅ 响应式设计，移动端友好
-- ✅ 支持 Vercel 无服务器部署
-- ✅ PostgreSQL 数据库支持
-- ✅ 现代化 UI（shadcn/ui + Tailwind CSS v4）
+- ✅ **异步数据库操作** - 使用 asyncpg 和 aiosqlite 进行异步 I/O
+- ✅ **视频流式传输** - 支持 HTTP Range 请求，可拖动进度条
+- ✅ **JWT 认证** - 保护管理员接口，Token 有效期 7 天
+- ✅ **自动视频分片** - 视频自动分片为 10MB 存储到 Telegram
+- ✅ **响应式设计** - 移动端友好，自适应各种屏幕尺寸
+- ✅ **Vercel 部署** - 支持无服务器部署，前后端一体化
+- ✅ **多数据库支持** - 本地开发使用 SQLite，生产环境使用 PostgreSQL
+- ✅ **现代化 UI** - 基于 shadcn/ui 和 Tailwind CSS v4
+- ✅ **类型安全** - 前端 TypeScript + 后端 Pydantic 全栈类型安全
+- ✅ **API 文档** - FastAPI 自动生成 OpenAPI 文档
 
 ## 许可证
 
