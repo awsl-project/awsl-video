@@ -12,6 +12,7 @@ from ..schemas import (
 )
 from ..auth import get_current_admin
 from ..storage import telegram_storage
+from ..config import settings
 import httpx
 
 router = APIRouter(prefix="/admin-api", tags=["Admin"])
@@ -347,8 +348,9 @@ async def upload_video_cover(
         # Upload to Telegram
         file_id = await telegram_storage.upload_chunk(contents, cover.filename or f"cover_{video_id}.jpg")
 
-        # Construct cover URL using the public API endpoint
-        cover_url = f"/api/cover/{file_id}"
+        # Construct cover URL using awsl-telegram-storage download endpoint
+        storage_url = settings.AWSL_TELEGRAM_STORAGE_URL.rstrip('/')
+        cover_url = f"{storage_url}/file/{file_id}"
 
         # Update video with cover URL
         video.cover_url = cover_url

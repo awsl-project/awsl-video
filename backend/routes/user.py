@@ -259,25 +259,3 @@ async def stream_video(episode_id: int, db: AsyncSession = Depends(get_db)):
 
     # Redirect to awsl-telegram-storage
     return RedirectResponse(url=stream_info["stream_url"], status_code=307)
-
-
-@router.get("/cover/{file_id}")
-async def get_cover(file_id: str):
-    """
-    Get cover image from Telegram storage.
-    Public endpoint for both admin and user pages.
-    """
-    try:
-        image_data = await telegram_storage.download_chunk(file_id)
-        return StreamingResponse(
-            iter([image_data]),
-            media_type="image/jpeg",
-            headers={
-                "Cache-Control": "public, max-age=31536000",
-            }
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Cover not found: {str(e)}"
-        )
