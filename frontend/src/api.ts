@@ -68,6 +68,7 @@ export interface Episode {
   title: string;
   duration?: number;
   created_at: string;
+  stream_url?: string;
 }
 
 export interface VideoWithEpisodes extends Video {
@@ -97,9 +98,6 @@ export const videoApi = {
 
   getEpisode: (episodeId: number) =>
     api.get<Episode>(`/api/episodes/${episodeId}`),
-
-  getStreamUrl: (episodeId: number) =>
-    `${API_BASE_URL}/api/stream/${episodeId}`,
 
   // Admin APIs
   login: (username: string, password: string) =>

@@ -106,17 +106,20 @@ export default function VideoPlayerPage() {
           <div className="lg:col-span-2 space-y-4">
             <Card className="overflow-hidden border-0 shadow-lg p-0 gap-0">
               <div className="aspect-video bg-black">
-                {currentEpisode ? (
+                {currentEpisode && currentEpisode.stream_url ? (
                   <video
                     ref={videoRef}
                     className="w-full h-full"
                     controls
                     autoPlay
-                    src={videoApi.getStreamUrl(currentEpisode.id)}
+                    src={currentEpisode.stream_url}
+                    key={currentEpisode.stream_url}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <p className="text-white">请选择剧集</p>
+                    <p className="text-white">
+                      {currentEpisode ? '加载中...' : '请选择剧集'}
+                    </p>
                   </div>
                 )}
               </div>

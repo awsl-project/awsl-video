@@ -15,6 +15,7 @@ class Episode(EpisodeBase):
     id: int
     video_id: int
     created_at: datetime
+    stream_url: Optional[str] = None
 
     class Config:
         from_attributes = True

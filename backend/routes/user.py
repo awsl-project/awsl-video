@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, exists
-from typing import AsyncGenerator, List
+from typing import List
 from ..database import get_db
 from ..models import Video, Episode, VideoChunk
 from ..schemas import (
@@ -10,7 +10,8 @@ from ..schemas import (
     VideoWithEpisodes, Episode as EpisodeSchema
 )
 from ..storage import telegram_storage
-import re
+from ..utils.compression import build_chunks_param
+from ..config import settings
 
 router = APIRouter(prefix="/api", tags=["User"])
 
@@ -119,6 +120,22 @@ async def get_video(video_id: int, include_empty: bool = False, db: AsyncSession
     episodes_result = await db.execute(query)
     episodes = episodes_result.scalars().all()
 
+    # Build episodes with stream URLs
+    episodes_with_urls = []
+    for ep in episodes:
+        stream_url = await _build_stream_url_for_episode(ep.id, db)
+        episodes_with_urls.append(
+            EpisodeSchema(
+                id=ep.id,
+                video_id=ep.video_id,
+                episode_number=ep.episode_number,
+                title=ep.title,
+                duration=ep.duration,
+                created_at=ep.created_at,
+                stream_url=stream_url
+            )
+        )
+
     # Construct response manually to avoid lazy loading issues
     return VideoWithEpisodes(
         id=video.id,
@@ -128,76 +145,73 @@ async def get_video(video_id: int, include_empty: bool = False, db: AsyncSession
         category=video.category,
         created_at=video.created_at,
         updated_at=video.updated_at,
-        episodes=[
-            EpisodeSchema(
-                id=ep.id,
-                video_id=ep.video_id,
-                episode_number=ep.episode_number,
-                title=ep.title,
-                duration=ep.duration,
-                created_at=ep.created_at
-            ) for ep in episodes
-        ]
+        episodes=episodes_with_urls
     )
 
 
 @router.get("/episodes/{episode_id}", response_model=EpisodeSchema)
 async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
-    """Get episode information"""
+    """Get episode information with stream URL"""
     result = await db.execute(
         select(Episode).where(Episode.id == episode_id)
     )
     episode = result.scalar_one_or_none()
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
-    return episode
+
+    # Build stream URL
+    stream_url = await _build_stream_url_for_episode(episode_id, db)
+
+    return EpisodeSchema(
+        id=episode.id,
+        video_id=episode.video_id,
+        episode_number=episode.episode_number,
+        title=episode.title,
+        duration=episode.duration,
+        created_at=episode.created_at,
+        stream_url=stream_url
+    )
 
 
-async def generate_video_stream(
-    chunks: list,
-    start: int = 0,
-    end: int = None
-) -> AsyncGenerator[bytes, None]:
+async def _build_stream_url_for_episode(episode_id: int, db: AsyncSession) -> str:
     """
-    Generate video stream from chunks with support for range requests.
+    Build streaming URL for an episode.
+    Returns empty string if no chunks found.
     """
-    current_pos = 0
+    # Get all chunks ordered by chunk_index
+    chunks_result = await db.execute(
+        select(VideoChunk)
+        .where(VideoChunk.episode_id == episode_id)
+        .order_by(VideoChunk.chunk_index)
+    )
+    chunks = chunks_result.scalars().all()
 
-    for chunk in chunks:
-        chunk_start = current_pos
-        chunk_end = current_pos + chunk.chunk_size - 1
-        current_pos += chunk.chunk_size
+    if not chunks:
+        return ""
 
-        # Skip chunks before the requested start position
-        if chunk_end < start:
-            continue
+    # Build chunks information
+    chunks_info = [(chunk.file_id, chunk.chunk_size) for chunk in chunks]
 
-        # Stop if we've passed the requested end position
-        if end is not None and chunk_start > end:
-            break
+    # Build compressed chunks parameter
+    compressed_param = build_chunks_param(chunks_info, use_compression=True)
 
-        # Download chunk from Telegram
-        chunk_data = await telegram_storage.download_chunk(chunk.file_id)
+    # Build streaming URL
+    storage_url = settings.AWSL_TELEGRAM_STORAGE_URL.rstrip('/')
+    stream_url = f"{storage_url}/stream/video?chunks={compressed_param}"
 
-        # Calculate the slice of this chunk to yield
-        slice_start = max(0, start - chunk_start)
-        slice_end = chunk.chunk_size if end is None else min(chunk.chunk_size, end - chunk_start + 1)
-
-        if slice_start < len(chunk_data):
-            yield chunk_data[slice_start:slice_end]
+    return stream_url
 
 
-@router.get("/stream/{episode_id}")
-async def stream_video(
-    episode_id: int,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
+@router.get("/episodes/{episode_id}/stream-url")
+async def get_episode_stream_url(episode_id: int, db: AsyncSession = Depends(get_db)):
     """
-    Stream video with support for range requests (for video seeking).
-    Similar to the implementation in yunpan.
+    Get streaming URL for an episode.
+    Returns the awsl-telegram-storage URL with compressed chunks parameter.
+
+    The video player should use this URL directly without going through our backend.
+    This reduces backend load and leverages awsl-telegram-storage's optimizations.
     """
-    # Get episode and chunks
+    # Verify episode exists
     result = await db.execute(
         select(Episode).where(Episode.id == episode_id)
     )
@@ -216,40 +230,35 @@ async def stream_video(
     if not chunks:
         raise HTTPException(status_code=404, detail="Video file not found")
 
-    # Calculate total file size
-    total_size = sum(chunk.chunk_size for chunk in chunks)
+    # Build chunks information
+    chunks_info = [(chunk.file_id, chunk.chunk_size) for chunk in chunks]
+    total_size = sum(size for _, size in chunks_info)
 
-    # Parse range header
-    range_header = request.headers.get("range")
-    start = 0
-    end = total_size - 1
-    status_code = 200
+    # Build compressed chunks parameter
+    compressed_param = build_chunks_param(chunks_info, use_compression=True)
 
-    if range_header:
-        range_match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-        if range_match:
-            start_str, end_str = range_match.groups()
-            start = int(start_str) if start_str else 0
-            end = int(end_str) if end_str else total_size - 1
-            status_code = 206
+    # Build streaming URL
+    storage_url = settings.AWSL_TELEGRAM_STORAGE_URL.rstrip('/')
+    stream_url = f"{storage_url}/stream/video?chunks={compressed_param}"
 
-    content_length = end - start + 1
-
-    headers = {
-        "Content-Type": "video/mp4",
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(content_length),
+    return {
+        "stream_url": stream_url,
+        "total_size": total_size,
+        "chunk_count": len(chunks)
     }
 
-    if status_code == 206:
-        headers["Content-Range"] = f"bytes {start}-{end}/{total_size}"
 
-    return StreamingResponse(
-        generate_video_stream(chunks, start, end),
-        status_code=status_code,
-        headers=headers,
-        media_type="video/mp4"
-    )
+@router.get("/stream/{episode_id}")
+async def stream_video(episode_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Legacy streaming endpoint that redirects to awsl-telegram-storage.
+    This maintains backward compatibility with existing video players.
+    """
+    # Get stream URL
+    stream_info = await get_episode_stream_url(episode_id, db)
+
+    # Redirect to awsl-telegram-storage
+    return RedirectResponse(url=stream_info["stream_url"], status_code=307)
 
 
 @router.get("/cover/{file_id}")

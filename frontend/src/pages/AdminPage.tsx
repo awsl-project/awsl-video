@@ -874,12 +874,19 @@ export default function AdminPage() {
                 第{previewingEpisode.episode_number}集 - {previewingEpisode.title}
               </div>
               <div className="aspect-video bg-black rounded-md overflow-hidden">
-                <video
-                  className="w-full h-full"
-                  controls
-                  autoPlay
-                  src={videoApi.getStreamUrl(previewingEpisode.id)}
-                />
+                {previewingEpisode.stream_url ? (
+                  <video
+                    className="w-full h-full"
+                    controls
+                    autoPlay
+                    src={previewingEpisode.stream_url}
+                    key={previewingEpisode.stream_url}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-white">视频未上传</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
