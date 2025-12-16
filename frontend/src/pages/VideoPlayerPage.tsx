@@ -1,10 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Video as VideoIcon, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
-import { videoApi, type VideoWithEpisodes, type Episode } from '../api';
+import { SEO } from '@/components/SEO';
+import { videoApi, getFullUrl, type VideoWithEpisodes, type Episode } from '../api';
 
 export default function VideoPlayerPage() {
   const { videoId, episodeId } = useParams<{ videoId: string; episodeId?: string }>();
@@ -72,6 +73,59 @@ export default function VideoPlayerPage() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Generate dynamic SEO content with useMemo for performance
+  // Must be called before any conditional returns (React Hooks rules)
+  const seoContent = useMemo(() => {
+    if (!video) {
+      return {
+        title: 'Awsl Video',
+        description: '在线视频平台，观看精彩视频内容',
+        image: undefined,
+        video: undefined,
+        breadcrumbs: undefined,
+      };
+    }
+
+    let title = video.title;
+    let description = video.description || '在线观看视频，支持分集播放。';
+    const coverImage = video.cover_url ? getFullUrl(video.cover_url) : undefined;
+
+    if (currentEpisode) {
+      title = `${video.title} - 第${currentEpisode.episode_number}集`;
+      description = `观看${video.title}第${currentEpisode.episode_number}集。${video.description || ''}`;
+    } else if (video.episodes.length > 0) {
+      title = `${video.title} - 共${video.episodes.length}集`;
+      description = `${video.title}，共${video.episodes.length}集，${video.description || ''}`;
+    }
+
+    // Generate breadcrumbs
+    const breadcrumbs = [
+      { name: '首页', url: typeof window !== 'undefined' ? window.location.origin : '' },
+      { name: video.title, url: typeof window !== 'undefined' ? `${window.location.origin}/video/${video.id}` : '' },
+    ];
+
+    if (currentEpisode) {
+      breadcrumbs.push({
+        name: `第${currentEpisode.episode_number}集`,
+        url: typeof window !== 'undefined' ? window.location.href : '',
+      });
+    }
+
+    return {
+      title,
+      description,
+      image: coverImage,
+      breadcrumbs,
+      video: currentEpisode ? {
+        title: `${video.title} - 第${currentEpisode.episode_number}集`,
+        description: video.description,
+        thumbnailUrl: coverImage,
+        duration: currentEpisode.duration,
+        uploadDate: currentEpisode.created_at,
+      } : undefined,
+    };
+  }, [video, currentEpisode]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -92,6 +146,14 @@ export default function VideoPlayerPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEO
+        title={seoContent.title}
+        description={seoContent.description}
+        image={seoContent.image}
+        type={currentEpisode ? 'video.other' : 'website'}
+        video={seoContent.video}
+        breadcrumbs={seoContent.breadcrumbs}
+      />
       <Header
         currentCategory={video?.category || ''}
         onCategoryChange={handleCategoryChange}
@@ -111,7 +173,8 @@ export default function VideoPlayerPage() {
                     ref={videoRef}
                     className="w-full h-full"
                     controls
-                    autoPlay
+                    preload="metadata"
+                    poster={video.cover_url ? getFullUrl(video.cover_url) : undefined}
                     src={currentEpisode.stream_url}
                     key={currentEpisode.stream_url}
                   />

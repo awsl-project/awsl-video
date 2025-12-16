@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Video as VideoIcon, Play, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Header } from '@/components/Header';
+import { SEO } from '@/components/SEO';
 import { videoApi, getFullUrl, type Video } from '../api';
 
 export default function HomePage() {
@@ -70,8 +71,39 @@ export default function HomePage() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  // Generate dynamic SEO content with useMemo for performance
+  const seoContent = useMemo(() => {
+    let title = 'Awsl Video';
+    let description = '在线视频平台，观看精彩视频内容';
+    let keywords = '视频网站,在线视频,视频播放,分集播放,视频平台';
+
+    if (searchKeyword && category) {
+      title = `${category} - "${searchKeyword}" 搜索结果`;
+      description = `在${category}分区搜索"${searchKeyword}"的视频结果，共找到 ${total} 个视频。`;
+      keywords = `${category},${searchKeyword},视频搜索,在线视频`;
+    } else if (searchKeyword) {
+      title = `"${searchKeyword}" 搜索结果`;
+      description = `搜索"${searchKeyword}"的视频结果，共找到 ${total} 个视频。`;
+      keywords = `${searchKeyword},视频搜索,在线视频,视频播放`;
+    } else if (category) {
+      title = `${category} - 分区视频`;
+      description = `${category}分区的所有视频，共 ${total} 个精彩视频等你观看。`;
+      keywords = `${category},视频分区,在线视频,视频平台`;
+    } else if (total > 0) {
+      description = `精选视频平台，共有 ${total} 个精彩视频，支持分集播放和在线观看。`;
+    }
+
+    return { title, description, keywords };
+  }, [searchKeyword, category, total]);
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEO
+        title={seoContent.title}
+        description={seoContent.description}
+        keywords={seoContent.keywords}
+        type="website"
+      />
       <Header
         currentCategory={category}
         onCategoryChange={handleCategoryChange}

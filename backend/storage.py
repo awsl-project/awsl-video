@@ -1,6 +1,9 @@
 import httpx
 from typing import BinaryIO, List
 from .config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -27,20 +30,38 @@ class TelegramStorage:
                 'X-Api-Token': self.api_token
             }
 
-            response = await client.post(
-                f"{self.base_url}/api/upload",
-                files=files,
-                data=data,
-                headers=headers
-            )
-            response.raise_for_status()
-            result = response.json()
+            try:
+                logger.info(f"Uploading file: {filename}, size: {len(chunk_data)} bytes")
+                logger.info(f"Upload URL: {self.base_url}/api/upload")
+                logger.info(f"Media type: document, Chat ID: {self.chat_id}")
 
-            if result.get('success') and result.get('files'):
-                # Return the first file_id (document file_id)
-                return result['files'][0]['file_id']
-            else:
-                raise Exception("Failed to upload chunk to Telegram")
+                response = await client.post(
+                    f"{self.base_url}/api/upload",
+                    files=files,
+                    data=data,
+                    headers=headers
+                )
+
+                logger.info(f"Response status: {response.status_code}")
+                logger.info(f"Response body: {response.text}")
+
+                response.raise_for_status()
+                result = response.json()
+
+                if result.get('success') and result.get('files'):
+                    # Return the first file_id (document file_id)
+                    file_id = result['files'][0]['file_id']
+                    logger.info(f"Upload successful, file_id: {file_id}")
+                    return file_id
+                else:
+                    logger.error(f"Upload failed: response missing success or files field: {result}")
+                    raise Exception("Failed to upload chunk to Telegram")
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error during upload: {e.response.status_code} - {e.response.text}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error during upload: {str(e)}")
+                raise
 
     async def download_chunk(self, file_id: str) -> bytes:
         """

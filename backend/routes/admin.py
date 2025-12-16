@@ -14,6 +14,10 @@ from ..auth import get_current_admin
 from ..storage import telegram_storage
 from ..config import settings
 import httpx
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin-api", tags=["Admin"])
 
@@ -311,6 +315,9 @@ async def upload_cover(
             "files": [{"file_id": file_id}]
         }
     except Exception as e:
+        logger.error(f"Failed to upload cover image: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to upload cover: {str(e)}"
@@ -363,6 +370,9 @@ async def upload_video_cover(
             "file_id": file_id
         }
     except Exception as e:
+        logger.error(f"Failed to upload cover for video {video_id}: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to upload cover: {str(e)}"
