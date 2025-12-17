@@ -10,6 +10,12 @@
 - 支持分集播放
 - 视频流式播放，支持拖动进度条
 - 响应式设计，支持移动端
+- **OAuth 登录**（GitHub + Linux.do）
+- **用户个人中心**
+- **观看历史记录**
+- **视频点赞/收藏/分享**
+- **视频评论**（支持回复和嵌套评论）
+- **播放进度自动保存**
 
 ### 管理员功能
 - JWT 身份验证
@@ -28,6 +34,8 @@
 - **SQLite** - 本地开发数据库
 - **asyncpg** - PostgreSQL 异步驱动
 - **JWT** - 身份验证
+- **OAuth 2.0** - GitHub 和 Linux.do 第三方登录
+- **httpx** - 异步 HTTP 客户端
 - **AWSL Telegram Storage** - 视频文件存储
 
 ### 前端
@@ -132,6 +140,12 @@ AWSL_TELEGRAM_API_TOKEN=your-token
 AWSL_TELEGRAM_CHAT_ID=your-chat-id
 DATABASE_URL=sqlite+aiosqlite:///./videos.db
 DEBUG=false
+
+# OAuth 配置
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+LINUXDO_CLIENT_ID=your-linuxdo-client-id
+LINUXDO_CLIENT_SECRET=your-linuxdo-client-secret
 ```
 
 > **注意**：.env 文件应放在项目根目录下，不要放在 backend 目录中。
@@ -147,6 +161,26 @@ DEBUG=false
   - **SQLite（本地开发）**: `sqlite+aiosqlite:///./videos.db`
   - **PostgreSQL（生产环境）**: `postgresql+asyncpg://user:password@host:5432/dbname?ssl=require`
 - `DEBUG`: 调试模式（可选，默认 false）
+- `GITHUB_CLIENT_ID`: GitHub OAuth 应用 ID
+- `GITHUB_CLIENT_SECRET`: GitHub OAuth 应用密钥
+- `LINUXDO_CLIENT_ID`: Linux.do OAuth 应用 ID
+- `LINUXDO_CLIENT_SECRET`: Linux.do OAuth 应用密钥
+
+#### OAuth 配置说明
+
+**GitHub OAuth:**
+1. 访问 [GitHub Developer Settings](https://github.com/settings/developers)
+2. 创建 New OAuth App
+3. 设置 Callback URL: `http://localhost:5173/login/callback` (开发环境)
+4. 获取 Client ID 和 Client Secret
+
+**Linux.do OAuth:**
+1. 访问 [Linux.do Connect](https://connect.linux.do)
+2. 创建 OAuth 应用
+3. 设置 Redirect URI: `http://localhost:5173/login/callback` (开发环境)
+4. 获取 Client ID 和 Client Secret
+
+> **生产环境**: Callback URL 需要改为生产域名，如 `https://yourdomain.com/login/callback`
 
 4. 运行后端：
 
@@ -290,6 +324,53 @@ npm run dev
 - file_id: Telegram file_id
 - chunk_size: 分片大小（字节）
 
+### User（用户）
+- id: 主键
+- oauth_provider: OAuth 提供商（github/linuxdo）
+- oauth_id: OAuth 用户 ID
+- username: 用户名
+- name: 显示名称
+- email: 邮箱
+- is_active: 是否活跃
+- created_at: 创建时间
+- last_login: 最后登录时间
+
+### WatchHistory（观看历史）
+- id: 主键
+- user_id: 用户 ID
+- episode_id: 分集 ID
+- video_id: 视频 ID
+- last_watched: 最后观看时间
+- created_at: 创建时间
+
+### VideoLike（点赞）
+- id: 主键
+- user_id: 用户 ID
+- video_id: 视频 ID
+- created_at: 创建时间
+
+### VideoFavorite（收藏）
+- id: 主键
+- user_id: 用户 ID
+- video_id: 视频 ID
+- created_at: 创建时间
+
+### VideoShare（分享）
+- id: 主键
+- user_id: 用户 ID
+- video_id: 视频 ID
+- created_at: 创建时间
+
+### Comment（评论）
+- id: 主键
+- user_id: 用户 ID
+- video_id: 视频 ID
+- parent_id: 父评论 ID（可选，用于回复）
+- content: 评论内容
+- is_deleted: 是否删除（软删除）
+- created_at: 创建时间
+- updated_at: 更新时间
+
 ## 开发说明
 
 ### 后端开发
@@ -317,6 +398,14 @@ npm run dev
 - ✅ **异步数据库操作** - 使用 asyncpg 和 aiosqlite 进行异步 I/O
 - ✅ **视频流式传输** - 支持 HTTP Range 请求，可拖动进度条
 - ✅ **JWT 认证** - 保护管理员接口，Token 有效期 7 天
+- ✅ **OAuth 2.0 登录** - 支持 GitHub 和 Linux.do 第三方登录
+- ✅ **用户系统** - 用户注册、登录、个人中心
+- ✅ **社交互动** - 点赞、收藏、分享、评论（支持回复）
+- ✅ **观看历史** - 自动记录播放历史，支持续播
+- ✅ **评论系统** - 嵌套评论、回复、软删除
+- ✅ **统一异常处理** - 前后端统一的错误处理和 Toast 提示
+- ✅ **Toast 防抖** - 防止错误提示堆叠，优化用户体验
+- ✅ **速率限制** - 防止恶意操作（评论、点赞、收藏每日限制 100 次）
 - ✅ **自动视频分片** - 视频自动分片为 10MB 存储到 Telegram
 - ✅ **响应式设计** - 移动端友好，自适应各种屏幕尺寸
 - ✅ **Vercel 部署** - 支持无服务器部署，前后端一体化

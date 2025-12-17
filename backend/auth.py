@@ -4,11 +4,15 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from .config import settings
 from .schemas import Token
+from .database import get_db
+from . import models
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # Allow optional authentication
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -52,3 +56,96 @@ def authenticate_admin(username: str, password: str) -> bool:
     if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
         return True
     return False
+
+
+def create_user_token(user_id: int, username: str) -> str:
+    """Create JWT token for authenticated user"""
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return create_access_token(
+        data={"sub": str(user_id), "username": username, "type": "user"},
+        expires_delta=access_token_expires
+    )
+
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[models.User]:
+    """Get current authenticated user (optional)"""
+    if not credentials:
+        return None
+
+    try:
+        payload = verify_token(credentials.credentials)
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+
+        # Check if it's a user token
+        if token_type != "user" or not user_id:
+            return None
+
+        # Fetch user from database
+        result = await db.execute(
+            select(models.User).where(models.User.id == int(user_id))
+        )
+        user = result.scalar_one_or_none()
+
+        if user and user.is_active:
+            return user
+        return None
+    except (JWTError, ValueError):
+        return None
+
+
+async def get_current_user_required(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> models.User:
+    """Get current authenticated user (required)"""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = verify_token(credentials.credentials)
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+
+        # Check if it's a user token
+        if token_type != "user" or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Fetch user from database
+        result = await db.execute(
+            select(models.User).where(models.User.id == int(user_id))
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive",
+            )
+
+        return user
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+

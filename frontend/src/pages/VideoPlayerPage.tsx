@@ -5,15 +5,30 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { SEO } from '@/components/SEO';
-import { videoApi, getFullUrl, type VideoWithEpisodes, type Episode } from '../api';
+import { VideoInteractions } from '@/components/VideoInteractions';
+import { VideoComments } from '@/components/VideoComments';
+import { videoApi, userApi, getFullUrl, type VideoWithEpisodes, type Episode } from '../api';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function VideoPlayerPage() {
   const { videoId, episodeId } = useParams<{ videoId: string; episodeId?: string }>();
+  const { isAuthenticated } = useAuth();
   const [video, setVideo] = useState<VideoWithEpisodes | null>(null);
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const navigate = useNavigate();
+
+  // Record watch history when video starts playing
+  const handlePlay = async () => {
+    if (!isAuthenticated || !currentEpisode) return;
+
+    try {
+      await userApi.recordWatchHistory(currentEpisode.id);
+    } catch (error: any) {
+      console.error('Failed to record watch history:', error);
+    }
+  };
 
   useEffect(() => {
     if (videoId) {
@@ -176,6 +191,7 @@ export default function VideoPlayerPage() {
                     preload="metadata"
                     poster={video.cover_url ? getFullUrl(video.cover_url) : undefined}
                     src={currentEpisode.stream_url}
+                    onPlay={handlePlay}
                     key={currentEpisode.stream_url}
                   />
                 ) : (
@@ -190,12 +206,22 @@ export default function VideoPlayerPage() {
 
             {/* Video Info */}
             <Card className="border-0 shadow p-0 gap-0">
-              <CardContent className="p-6">
+              <CardContent className="p-6 space-y-4">
+                {/* Video Interactions */}
+                <VideoInteractions videoId={parseInt(videoId!)} />
+
                 {video.description && (
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {video.description}
                   </p>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Comments Section */}
+            <Card className="border-0 shadow p-0 gap-0">
+              <CardContent className="p-6">
+                <VideoComments videoId={parseInt(videoId!)} />
               </CardContent>
             </Card>
           </div>

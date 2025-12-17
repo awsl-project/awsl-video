@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     DEBUG: bool = False
 
+    # OAuth Settings
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    LINUXDO_CLIENT_ID: str = ""
+    LINUXDO_CLIENT_SECRET: str = ""
+
     class Config:
         env_file = ".env"
 

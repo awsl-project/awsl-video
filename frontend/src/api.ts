@@ -1,5 +1,17 @@
 import axios from 'axios';
-import { toast } from '@/hooks/use-toast';
+import { ErrorToastManager } from '@/utils/errorHandler';
+import type {
+  Video,
+  Episode,
+  VideoWithEpisodes,
+  PaginatedVideos,
+  UserProfile,
+  UserToken,
+  WatchHistory,
+  VideoStats,
+  Comment,
+  PaginatedComments,
+} from '@/types/user';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -16,71 +28,53 @@ export const getFullUrl = (path: string | null | undefined): string => {
   return `${API_BASE_URL}${path}`;
 };
 
-// Add auth token to requests
+// Add auth token to requests (user token or admin token)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('admin_token');
+  const userToken = localStorage.getItem('user_token');
+  const adminToken = localStorage.getItem('admin_token');
+  const token = userToken || adminToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Add response interceptor to handle auth errors
+// Add response interceptor to handle errors globally
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle 401 Unauthorized or 403 Forbidden
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      const message = error.response?.data?.message || '登录已过期，请重新登录';
+    // Network error (no response from server)
+    if (!error.response) {
+      ErrorToastManager.showNetworkError();
+      return Promise.reject(error);
+    }
 
-      toast({
-        variant: "destructive",
-        title: "认证失败",
-        description: message,
-      });
+    const { status, data } = error.response;
+    const message = data?.message || data?.detail || '操作失败';
 
-      // Clear token and redirect to login
-      localStorage.removeItem('admin_token');
-      if (window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin/login') {
-        window.location.href = '/admin/login';
+    // Show error toast with debouncing
+    ErrorToastManager.showError(status, message);
+
+    // Handle authentication errors - redirect to login
+    if (status === 401 || status === 403) {
+      const isAdminPath = window.location.pathname.startsWith('/admin');
+      if (isAdminPath) {
+        localStorage.removeItem('admin_token');
+        if (window.location.pathname !== '/admin/login') {
+          window.location.href = '/admin/login';
+        }
+      } else {
+        localStorage.removeItem('user_token');
+        localStorage.removeItem('user');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
 
     return Promise.reject(error);
   }
 );
-
-// Types
-export interface Video {
-  id: number;
-  title: string;
-  description?: string;
-  cover_url?: string;
-  category?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Episode {
-  id: number;
-  video_id: number;
-  episode_number: number;
-  title: string;
-  duration?: number;
-  created_at: string;
-  stream_url?: string;
-}
-
-export interface VideoWithEpisodes extends Video {
-  episodes: Episode[];
-}
-
-export interface PaginatedVideos {
-  total: number;
-  page: number;
-  page_size: number;
-  videos: Video[];
-}
 
 // API functions
 export const videoApi = {
@@ -141,3 +135,57 @@ export const videoApi = {
   deleteEpisode: (episodeId: number) =>
     api.delete(`/admin-api/episodes/${episodeId}`),
 };
+
+// User API functions
+export const userApi = {
+  // OAuth
+  getOAuthUrl: (provider: 'github' | 'linuxdo', redirectUri: string) =>
+    api.get<{ authorize_url: string }>(`/api/oauth/login/${provider}`, { params: { redirect_uri: redirectUri } }),
+
+  oauthCallback: (code: string, provider: string, redirectUri: string) =>
+    api.post<UserToken>(`/api/oauth/callback`, null, { params: { code, provider, redirect_uri: redirectUri } }),
+
+  // User Profile
+  getCurrentUser: () =>
+    api.get<UserProfile>('/api/user/me'),
+
+  // Watch History
+  getWatchHistory: (limit = 50, offset = 0) =>
+    api.get<WatchHistory[]>('/api/user/history', { params: { limit, offset } }),
+
+  recordWatchHistory: (episodeId: number) =>
+    api.post<WatchHistory>('/api/user/history', { episode_id: episodeId }),
+
+  // Favorites
+  getFavorites: (limit = 50, offset = 0) =>
+    api.get('/api/user/favorites', { params: { limit, offset } }),
+
+  toggleFavorite: (videoId: number) =>
+    api.post<{ favorited: boolean }>(`/api/user/videos/${videoId}/favorite`),
+
+  // Likes
+  toggleLike: (videoId: number) =>
+    api.post<{ liked: boolean; total_likes: number }>(`/api/user/videos/${videoId}/like`),
+
+  // Share
+  recordShare: (videoId: number) =>
+    api.post<{ message: string; total_shares: number }>(`/api/user/videos/${videoId}/share`),
+
+  // Video Stats
+  getVideoStats: (videoId: number) =>
+    api.get<VideoStats>(`/api/videos/${videoId}/stats`),
+
+  // Comments
+  getComments: (videoId: number, page = 1, pageSize = 20) =>
+    api.get<PaginatedComments>(`/api/videos/${videoId}/comments`, { params: { page, page_size: pageSize } }),
+
+  createComment: (videoId: number, content: string, parentId?: number) =>
+    api.post<Comment>(`/api/videos/${videoId}/comments`, { content, parent_id: parentId }),
+
+  updateComment: (commentId: number, content: string) =>
+    api.put<Comment>(`/api/comments/${commentId}`, { content }),
+
+  deleteComment: (commentId: number) =>
+    api.delete(`/api/comments/${commentId}`),
+};
+

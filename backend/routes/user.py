@@ -2,16 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, exists
-from typing import List
+from typing import List, Optional
 from ..database import get_db
-from ..models import Video, Episode, VideoChunk
+from ..models import Video, Episode, VideoChunk, VideoLike, VideoFavorite, VideoShare, Comment, User
 from ..schemas import (
     PaginatedVideos, Video as VideoSchema,
-    VideoWithEpisodes, Episode as EpisodeSchema
+    VideoWithEpisodes, Episode as EpisodeSchema,
+    VideoStats
 )
 from ..storage import telegram_storage
 from ..utils.compression import build_chunks_param
 from ..config import settings
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["User"])
 
@@ -259,3 +261,80 @@ async def stream_video(episode_id: int, db: AsyncSession = Depends(get_db)):
 
     # Redirect to awsl-telegram-storage
     return RedirectResponse(url=stream_info["stream_url"], status_code=307)
+
+
+@router.get("/videos/{video_id}/stats", response_model=VideoStats)
+async def get_video_stats(
+    video_id: int,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get video statistics (likes, favorites, shares, comments count)"""
+    # Check if video exists
+    video_result = await db.execute(
+        select(Video).where(Video.id == video_id)
+    )
+    video = video_result.scalar_one_or_none()
+
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # Get likes count
+    likes_count_result = await db.execute(
+        select(func.count(VideoLike.id)).where(VideoLike.video_id == video_id)
+    )
+    likes_count = likes_count_result.scalar()
+
+    # Get favorites count
+    favorites_count_result = await db.execute(
+        select(func.count(VideoFavorite.id)).where(VideoFavorite.video_id == video_id)
+    )
+    favorites_count = favorites_count_result.scalar()
+
+    # Get shares count
+    shares_count_result = await db.execute(
+        select(func.count(VideoShare.id)).where(VideoShare.video_id == video_id)
+    )
+    shares_count = shares_count_result.scalar()
+
+    # Get comments count (only non-deleted root comments)
+    comments_count_result = await db.execute(
+        select(func.count(Comment.id)).where(
+            Comment.video_id == video_id,
+            Comment.is_deleted == False
+        )
+    )
+    comments_count = comments_count_result.scalar()
+
+    # Check if current user liked/favorited
+    user_liked = False
+    user_favorited = False
+
+    if current_user:
+        # Check if user liked
+        liked_result = await db.execute(
+            select(VideoLike).where(
+                VideoLike.user_id == current_user.id,
+                VideoLike.video_id == video_id
+            )
+        )
+        user_liked = liked_result.scalar_one_or_none() is not None
+
+        # Check if user favorited
+        favorited_result = await db.execute(
+            select(VideoFavorite).where(
+                VideoFavorite.user_id == current_user.id,
+                VideoFavorite.video_id == video_id
+            )
+        )
+        user_favorited = favorited_result.scalar_one_or_none() is not None
+
+    return VideoStats(
+        likes_count=likes_count,
+        favorites_count=favorites_count,
+        shares_count=shares_count,
+        comments_count=comments_count,
+        user_liked=user_liked,
+        user_favorited=user_favorited
+    )
+
