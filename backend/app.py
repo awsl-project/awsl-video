@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from .routes import admin, user, auth, oauth, user_profile, comments
+from .middleware import IPCountryBlockMiddleware
+from .config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add IP country blocking middleware
+# This middleware blocks access from specific countries (default: China/CN)
+# based on the X-Vercel-IP-Country header automatically added by Vercel
+# Configure blocked countries via BLOCKED_COUNTRIES environment variable (comma-separated)
+blocked_countries_list = [c.strip().upper() for c in settings.BLOCKED_COUNTRIES.split(",") if c.strip()]
+app.add_middleware(IPCountryBlockMiddleware, blocked_countries=blocked_countries_list)
 
 
 # HTTPException handler

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     LINUXDO_CLIENT_ID: str = ""
     LINUXDO_CLIENT_SECRET: str = ""
 
+    # IP Country Blocking Settings
+    BLOCKED_COUNTRIES: str = "CN"  # Comma-separated list of ISO 3166-1 alpha-2 country codes
+
     class Config:
         env_file = ".env"
 
