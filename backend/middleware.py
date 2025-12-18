@@ -58,12 +58,12 @@ class IPCountryBlockMiddleware(BaseHTTPMiddleware):
             )
 
             return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=status.HTTP_451_UNAVAILABLE_FOR_LEGAL_REASONS,
                 content={
                     "success": False,
                     "message": "访问受限：该地区暂不支持访问",
                     "detail": "Access restricted: This region is not supported",
-                    "status_code": 403
+                    "status_code": 451
                 }
             )
 
