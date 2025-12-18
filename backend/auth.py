@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +13,14 @@ from . import models
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)  # Allow optional authentication
+
+
+def get_admin_token_from_header(request: Request) -> Optional[str]:
+    """Extract admin token from X-Admin-Authorization header"""
+    auth_header = request.headers.get("X-Admin-Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
@@ -41,8 +49,17 @@ def verify_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-async def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    payload = verify_token(credentials.credentials)
+async def get_current_admin(request: Request) -> dict:
+    """Get current admin from X-Admin-Authorization header"""
+    token = get_admin_token_from_header(request)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = verify_token(token)
     username: str = payload.get("sub")
     if username is None or username != settings.ADMIN_USERNAME:
         raise HTTPException(

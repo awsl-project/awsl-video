@@ -3,7 +3,14 @@ import * as React from "react"
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 100000
+const TOAST_REMOVE_DELAY = 1000
+
+// Toast duration based on variant
+const TOAST_DURATION = {
+  success: 3000,    // 3 seconds for success
+  destructive: 10000, // 10 seconds for errors
+  default: 5000,    // 5 seconds for default
+}
 
 type ToasterToast = ToastProps & {
   id: string
@@ -155,6 +162,17 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-dismiss based on variant
+  const duration = props.variant === 'success'
+    ? TOAST_DURATION.success
+    : props.variant === 'destructive'
+    ? TOAST_DURATION.destructive
+    : TOAST_DURATION.default
+
+  setTimeout(() => {
+    dismiss()
+  }, duration)
 
   return {
     id: id,

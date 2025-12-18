@@ -1,7 +1,7 @@
 import logging
 import uvicorn
 
-from backend.main import app
+from backend.app import app
 
 logging.basicConfig(
     format="%(asctime)s: %(levelname)s: %(name)s: %(message)s",

@@ -10,11 +10,13 @@ import FavoritesPage from './pages/FavoritesPage';
 import ProfilePage from './pages/ProfilePage';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ApiInterceptor } from '@/components/ApiInterceptor';
 
 function App() {
   return (
     <AuthProvider>
       <Router>
+        <ApiInterceptor />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/video/:videoId" element={<VideoPlayerPage />} />

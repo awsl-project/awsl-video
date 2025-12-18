@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Play, Video as VideoIcon, Loader2 } from 'lucide-react';
+import { Play, Video as VideoIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
@@ -13,9 +13,9 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function VideoPlayerPage() {
   const { videoId, episodeId } = useParams<{ videoId: string; episodeId?: string }>();
   const { isAuthenticated } = useAuth();
-  const [video, setVideo] = useState<VideoWithEpisodes | null>(null);
+  const [video, setVideo] = useState<VideoWithEpisodes | null | undefined>(undefined);
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [recordedEpisodes, setRecordedEpisodes] = useState<Set<number>>(new Set());
   const videoRef = useRef<HTMLVideoElement>(null);
   const navigate = useNavigate();
 
@@ -23,8 +23,13 @@ export default function VideoPlayerPage() {
   const handlePlay = async () => {
     if (!isAuthenticated || !currentEpisode) return;
 
+    // Skip if already recorded for this episode
+    if (recordedEpisodes.has(currentEpisode.id)) return;
+
     try {
       await userApi.recordWatchHistory(currentEpisode.id);
+      // Mark this episode as recorded
+      setRecordedEpisodes(prev => new Set(prev).add(currentEpisode.id));
     } catch (error: any) {
       console.error('Failed to record watch history:', error);
     }
@@ -50,14 +55,12 @@ export default function VideoPlayerPage() {
   }, [video, episodeId]);
 
   const fetchVideoData = async (id: number) => {
-    setLoading(true);
     try {
       const response = await videoApi.getVideo(id);
       setVideo(response.data);
     } catch (error) {
       console.error('Error fetching video:', error);
-    } finally {
-      setLoading(false);
+      setVideo(null);
     }
   };
 
@@ -141,20 +144,56 @@ export default function VideoPlayerPage() {
     };
   }, [video, currentEpisode]);
 
-  if (loading) {
+  // Failed to load or not found
+  if (video === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
+      <>
+        <Header
+          currentCategory=""
+          onCategoryChange={handleCategoryChange}
+          onHomeClick={handleHomeClick}
+          onSearch={handleSearch}
+        />
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+          <VideoIcon className="h-20 w-20 text-muted-foreground" />
+          <p className="text-lg text-muted-foreground">视频未找到</p>
+          <Button onClick={() => navigate('/')}>返回首页</Button>
+        </div>
+      </>
     );
   }
 
-  if (!video) {
+  // Still loading, show skeleton
+  if (video === undefined) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <VideoIcon className="h-20 w-20 text-muted-foreground" />
-        <p className="text-lg text-muted-foreground">视频未找到</p>
-        <Button onClick={() => navigate('/')}>返回首页</Button>
+      <div className="min-h-screen bg-gray-50">
+        <Header
+          currentCategory=""
+          onCategoryChange={handleCategoryChange}
+          onHomeClick={handleHomeClick}
+          onSearch={handleSearch}
+        />
+        <div className="container py-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <Card className="overflow-hidden border-0 shadow-lg p-0">
+                <div className="aspect-video bg-gray-200 animate-pulse" />
+              </Card>
+            </div>
+            <div className="space-y-4">
+              <Card className="border-0 shadow">
+                <CardContent className="p-4">
+                  <div className="h-6 bg-gray-200 animate-pulse rounded mb-4" />
+                  <div className="space-y-2">
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

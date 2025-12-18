@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { userApi } from '@/api';
 import type { Video } from '@/types/user';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,12 +45,24 @@ export default function FavoritesPage() {
 
   if (authLoading || loading) {
     return (
-      <>
+      <div className="min-h-screen">
         <Header showSearch={false} showCategories={false} />
-        <div className="flex justify-center items-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <div className="h-10 bg-gray-200 animate-pulse rounded w-48 mb-2" />
+            <div className="h-4 bg-gray-200 animate-pulse rounded w-64" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="space-y-3">
+                <div className="aspect-video bg-gray-200 animate-pulse rounded-lg" />
+                <div className="h-4 bg-gray-200 animate-pulse rounded" />
+                <div className="h-3 bg-gray-200 animate-pulse rounded w-2/3" />
+              </div>
+            ))}
+          </div>
         </div>
-      </>
+      </div>
     );
   }
 

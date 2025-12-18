@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, exists
+from sqlalchemy import select, func, exists, cast, Float, case, text
 from typing import List, Optional
+from datetime import datetime, timedelta
 from ..database import get_db
 from ..models import Video, Episode, VideoChunk, VideoLike, VideoFavorite, VideoShare, Comment, User
 from ..schemas import (
@@ -35,6 +36,7 @@ async def list_videos(
     category: str = "",
     search: str = "",
     include_empty: bool = False,
+    sort_by: str = "default",
     db: AsyncSession = Depends(get_db)
 ):
     """Get paginated list of videos, optionally filtered by category and search keyword
@@ -42,6 +44,14 @@ async def list_videos(
     Args:
         include_empty: If False (default), only return videos that have at least one episode.
                       If True, return all videos including those without episodes.
+        sort_by: Sorting method:
+                 - "default": Smart sorting algorithm (internal, balances freshness and engagement)
+                 - "latest": Sort by creation time (newest first)
+                 - "popular": Sort by engagement score (likes + favorites*2 + shares*3)
+                 - "trending": Sort by recent engagement (last 7 days weighted score)
+                 - "likes": Sort by likes count
+                 - "favorites": Sort by favorites count
+                 - "shares": Sort by shares count
     """
     if page < 1:
         page = 1
@@ -50,8 +60,20 @@ async def list_videos(
 
     offset = (page - 1) * page_size
 
-    # Build query with optional filters
-    query = select(Video)
+    # Build base query with LEFT JOINs to aggregate engagement metrics
+    # This avoids N+1 queries by computing counts at database level
+    query = (
+        select(
+            Video,
+            func.count(func.distinct(VideoLike.id)).label('likes_count'),
+            func.count(func.distinct(VideoFavorite.id)).label('favorites_count'),
+            func.count(func.distinct(VideoShare.id)).label('shares_count')
+        )
+        .outerjoin(VideoLike, VideoLike.video_id == Video.id)
+        .outerjoin(VideoFavorite, VideoFavorite.video_id == Video.id)
+        .outerjoin(VideoShare, VideoShare.video_id == Video.id)
+        .group_by(Video.id)
+    )
 
     # Filter out videos without episodes unless include_empty is True
     if not include_empty:
@@ -70,19 +92,81 @@ async def list_videos(
         search_pattern = f"%{search}%"
         query = query.where(Video.title.ilike(search_pattern))
 
-    # Get total count
-    count_result = await db.execute(
-        select(func.count(Video.id)).select_from(
-            query.subquery() if (category or search or not include_empty) else Video
-        )
-    )
+    # Get total count using the same filters
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
     total = count_result.scalar()
+
+    # For sorting, we need to order by the aggregated columns
+    # Use text() to reference the computed column aliases
+    if sort_by == "default":
+        # Smart default sorting: combines engagement and freshness
+        # Time decay constant (70 days): tuned for video platform where
+        # content remains relevant for 2-3 months
+        age_in_days = func.extract('epoch', func.current_timestamp() - Video.created_at) / 86400.0
+        time_decay = 1.0 / (1.0 + age_in_days / 70.0)
+        # Calculate engagement from raw aggregates before aliasing
+        engagement = (
+            func.count(func.distinct(VideoLike.id)) +
+            func.count(func.distinct(VideoFavorite.id)) * 2 +
+            func.count(func.distinct(VideoShare.id)) * 3
+        )
+        smart_score = (cast(engagement, Float) + 1.0) * time_decay
+        query = query.order_by(smart_score.desc())
+    elif sort_by == "popular":
+        # Sort by total engagement score (descending)
+        engagement = (
+            func.count(func.distinct(VideoLike.id)) +
+            func.count(func.distinct(VideoFavorite.id)) * 2 +
+            func.count(func.distinct(VideoShare.id)) * 3
+        )
+        query = query.order_by(engagement.desc(), Video.created_at.desc())
+    elif sort_by == "trending":
+        # Sort by recent engagement (last 7 days)
+        # Use conditional aggregation to filter by date at database level
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        recent_engagement = (
+            func.count(func.distinct(case(
+                (VideoLike.created_at >= seven_days_ago, VideoLike.id),
+                else_=None
+            ))) +
+            func.count(func.distinct(case(
+                (VideoFavorite.created_at >= seven_days_ago, VideoFavorite.id),
+                else_=None
+            ))) * 2 +
+            func.count(func.distinct(case(
+                (VideoShare.created_at >= seven_days_ago, VideoShare.id),
+                else_=None
+            ))) * 3
+        )
+        query = query.order_by(recent_engagement.desc(), Video.created_at.desc())
+    elif sort_by == "latest":
+        # Sort by creation time (newest first)
+        query = query.order_by(Video.created_at.desc())
+    elif sort_by == "likes":
+        # Sort by likes count only
+        query = query.order_by(func.count(func.distinct(VideoLike.id)).desc(), Video.created_at.desc())
+    elif sort_by == "favorites":
+        # Sort by favorites count only
+        query = query.order_by(func.count(func.distinct(VideoFavorite.id)).desc(), Video.created_at.desc())
+    elif sort_by == "shares":
+        # Sort by shares count only
+        query = query.order_by(func.count(func.distinct(VideoShare.id)).desc(), Video.created_at.desc())
+    else:
+        # Fallback to default smart sorting
+        age_in_days = func.extract('epoch', func.current_timestamp() - Video.created_at) / 86400.0
+        time_decay = 1.0 / (1.0 + age_in_days / 70.0)
+        engagement = (
+            func.count(func.distinct(VideoLike.id)) +
+            func.count(func.distinct(VideoFavorite.id)) * 2 +
+            func.count(func.distinct(VideoShare.id)) * 3
+        )
+        smart_score = (cast(engagement, Float) + 1.0) * time_decay
+        query = query.order_by(smart_score.desc())
 
     # Get videos
     result = await db.execute(
-        query.order_by(Video.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
+        query.offset(offset).limit(page_size)
     )
     videos = result.scalars().all()
 

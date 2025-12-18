@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<VideoWithEpisodes | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [showVideoForm, setShowVideoForm] = useState(false);
   const [isEditingVideo, setIsEditingVideo] = useState(false);
   const [showEpisodeForm, setShowEpisodeForm] = useState(false);
@@ -25,6 +26,7 @@ export default function AdminPage() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [showCoverUploadDialog, setShowCoverUploadDialog] = useState(false);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [videoTitle, setVideoTitle] = useState('');
   const [videoDesc, setVideoDesc] = useState('');
   const [videoCategory, setVideoCategory] = useState('');
@@ -53,7 +55,8 @@ export default function AdminPage() {
     }
     fetchCategories();
     fetchVideos();
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 只在组件首次挂载时执行
 
   // 防抖搜索关键词
   useEffect(() => {
@@ -75,11 +78,28 @@ export default function AdminPage() {
   // 监听路由参数中的 videoId
   useEffect(() => {
     if (videoId) {
-      fetchVideoDetail(parseInt(videoId));
+      const id = parseInt(videoId);
+      // 先从视频列表中找到对应视频，立即更新选中状态（提供即时反馈）
+      const video = videos.find(v => v.id === id);
+      if (video) {
+        // 设置临时选中状态，只有基本信息，选中状态立即显示
+        setSelectedVideo({
+          ...video,
+          episodes: []
+        } as VideoWithEpisodes);
+        // 显示分集加载状态
+        setLoadingEpisodes(true);
+      } else {
+        // 列表中找不到，显示完整加载状态
+        setLoadingDetail(true);
+      }
+      // 异步加载完整的视频详情（包括 episodes）
+      fetchVideoDetail(id);
     } else {
       setSelectedVideo(null);
+      setLoadingEpisodes(false);
     }
-  }, [videoId]);
+  }, [videoId, videos]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -131,6 +151,9 @@ export default function AdminPage() {
       setSelectedVideo(response.data);
     } catch (error) {
       console.error('Failed to fetch video details');
+    } finally {
+      setLoadingDetail(false);
+      setLoadingEpisodes(false);
     }
   };
 
@@ -140,6 +163,27 @@ export default function AdminPage() {
   };
 
   const handleCoverFile = (file: File) => {
+    // Check file size (2MB limit)
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+    if (file.size > MAX_SIZE) {
+      toast({
+        variant: "destructive",
+        title: "文件过大",
+        description: "封面图片不能超过 2MB",
+      });
+      return;
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        variant: "destructive",
+        title: "文件类型错误",
+        description: "请选择图片文件",
+      });
+      return;
+    }
+
     setCoverFile(file);
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -272,16 +316,79 @@ export default function AdminPage() {
   const handleUploadVideo = async () => {
     if (!videoFile || !uploadingEpisode) return;
 
-    const fileName = `${selectedVideo?.title}_${uploadingEpisode.episode_number}_${uploadingEpisode.title}.mp4`;
-    const formData = new FormData();
-    formData.append('file', videoFile, fileName);
-
     setIsUploading(true);
     setUploadProgress(0);
 
     try {
-      await videoApi.uploadVideo(uploadingEpisode.id, formData, (progress) => {
+      // Step 1: Get JWT token from backend
+      const tokenResponse = await videoApi.getUploadToken();
+      const { token, storage_url } = tokenResponse.data;
+
+      // Step 2: Slice file in browser (10MB chunks)
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+      const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
+      const chunks: Array<{ chunk_index: number; file_id: string; file_size: number }> = [];
+
+      // Get file extension from original file
+      const fileExtension = videoFile.name.substring(videoFile.name.lastIndexOf('.'));
+      const fileName = `${selectedVideo?.title}_EP${uploadingEpisode.episode_number}_${uploadingEpisode.title}${fileExtension}`;
+
+      // Step 3: Upload each chunk to awsl-telegram-storage
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, videoFile.size);
+        const chunkBlob = videoFile.slice(start, end);
+
+        const formData = new FormData();
+        const chunkFileName = `${fileName}.part${i + 1}`;
+        formData.append('file', chunkBlob, chunkFileName);
+        formData.append('media_type', 'document');
+
+        const uploadResponse = await fetch(`${storage_url}/api/upload`, {
+          method: 'POST',
+          headers: {
+            'X-Api-Token': token,
+          },
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text();
+          throw new Error(`Chunk ${i + 1} upload failed: ${errorText}`);
+        }
+
+        const uploadResult = await uploadResponse.json();
+
+        if (!uploadResult.success || !uploadResult.files || uploadResult.files.length === 0) {
+          throw new Error(`Chunk ${i + 1} upload failed: Invalid response`);
+        }
+
+        // For document type, only one file_id is returned
+        const fileId = uploadResult.files[0].file_id;
+        chunks.push({
+          chunk_index: i,
+          file_id: fileId,
+          file_size: end - start,
+        });
+
+        // Update progress (0-85% for uploading chunks)
+        const progress = Math.floor(((i + 1) / totalChunks) * 85);
         setUploadProgress(progress);
+      }
+
+      // Step 4: Finalize upload by sending chunks to backend
+      setUploadProgress(90);
+      await videoApi.finalizeVideoUpload(uploadingEpisode.id, chunks);
+
+      setUploadProgress(100);
+
+      // Log chunk details in console only
+      console.log(`Video uploaded successfully with ${totalChunks} chunks`, {
+        episodeId: uploadingEpisode.id,
+        fileName,
+        totalSize: videoFile.size,
+        chunkSize: CHUNK_SIZE,
+        chunks: chunks.length,
       });
 
       toast({
@@ -298,8 +405,13 @@ export default function AdminPage() {
       if (selectedVideo) {
         fetchVideoDetail(selectedVideo.id);
       }
-    } catch (error) {
-      console.error('Failed to upload video');
+    } catch (error: any) {
+      console.error('Failed to upload video:', error);
+      toast({
+        variant: "destructive",
+        title: "上传失败",
+        description: error.message || "视频上传失败，请重试",
+      });
     } finally {
       setIsUploading(false);
     }
@@ -352,7 +464,14 @@ export default function AdminPage() {
     try {
       const formData = new FormData();
       formData.append('cover', coverFile);
+
       await videoApi.uploadCover(selectedVideo.id, formData);
+
+      toast({
+        variant: "success",
+        title: "成功",
+        description: "封面上传成功",
+      });
 
       setShowCoverUploadDialog(false);
       setCoverFile(null);
@@ -360,7 +479,7 @@ export default function AdminPage() {
       fetchVideos();
       fetchVideoDetail(selectedVideo.id);
     } catch (error) {
-      console.error('Failed to upload cover');
+      console.error('Failed to upload cover:', error);
     }
   };
 
@@ -471,8 +590,12 @@ export default function AdminPage() {
                     key={video.id}
                     className={`cursor-pointer transition-all hover:shadow-md ${
                       selectedVideo?.id === video.id ? 'border-primary' : ''
-                    }`}
-                    onClick={() => navigate(`/admin/${video.id}`)}
+                    } ${loadingEpisodes || loadingDetail ? 'pointer-events-none opacity-50' : ''}`}
+                    onClick={() => {
+                      // 加载中不允许切换
+                      if (loadingEpisodes || loadingDetail) return;
+                      navigate(`/admin/${video.id}`);
+                    }}
                   >
                     <CardContent className="py-1.5 px-2.5">
                       <div className="flex items-center justify-between gap-2">
@@ -490,7 +613,23 @@ export default function AdminPage() {
 
           {/* Video Detail */}
           <div className="lg:col-span-3 space-y-4">
-            {selectedVideo ? (
+            {loadingDetail ? (
+              <Card>
+                <CardHeader>
+                  <div className="h-6 bg-gray-200 animate-pulse rounded w-1/3" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="w-full h-48 bg-gray-200 animate-pulse rounded-md" />
+                  <div className="h-4 bg-gray-200 animate-pulse rounded w-3/4" />
+                  <div className="h-4 bg-gray-200 animate-pulse rounded w-1/2" />
+                  <div className="space-y-2 mt-6">
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                    <div className="h-12 bg-gray-200 animate-pulse rounded" />
+                  </div>
+                </CardContent>
+              </Card>
+            ) : selectedVideo ? (
               <>
                 <Card>
                   <CardHeader>
@@ -581,75 +720,96 @@ export default function AdminPage() {
                               添加分集
                             </Button>
                           </div>
-                          {selectedVideo.episodes.map((episode) => (
-                            <div key={episode.id}>
-                              {editingEpisodeId === episode.id ? (
-                                <div className="p-3 rounded-lg border space-y-3">
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <Label className="text-xs">集数</Label>
-                                      <Input
-                                        type="number"
-                                        value={episodeNumber}
-                                        onChange={(e) => setEpisodeNumber(e.target.value)}
-                                        className="h-8"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">标题</Label>
-                                      <Input
-                                        value={episodeTitle}
-                                        onChange={(e) => setEpisodeTitle(e.target.value)}
-                                        className="h-8"
-                                      />
-                                    </div>
+                          {loadingEpisodes ? (
+                            // 分集加载骨架屏
+                            <div className="space-y-2">
+                              {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+                                  <div className="flex-1">
+                                    <div className="h-5 bg-gray-200 animate-pulse rounded w-48" />
                                   </div>
                                   <div className="flex gap-2">
-                                    <Button size="sm" onClick={() => saveEpisodeEdit(episode.id)} className="flex-1">保存</Button>
-                                    <Button size="sm" variant="secondary" onClick={cancelEditingEpisode} className="flex-1">取消</Button>
+                                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded" />
+                                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded" />
+                                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded" />
+                                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded" />
                                   </div>
                                 </div>
-                              ) : (
-                                <div className="flex items-center justify-between p-3 rounded-lg border">
-                                  <div>
-                                    <p className="font-medium">
-                                      第{episode.episode_number}集 - {episode.title}
-                                    </p>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handlePreviewClick(episode)}
-                                    >
-                                      <Play className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => startEditingEpisode(episode)}
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleUploadClick(episode)}
-                                    >
-                                      <Upload className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteEpisode(episode.id)}
-                                    >
-                                      <Trash className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
+                              ))}
                             </div>
-                          ))}
+                          ) : (
+                            <>
+                              {selectedVideo.episodes.map((episode) => (
+                                <div key={episode.id}>
+                                  {editingEpisodeId === episode.id ? (
+                                    <div className="p-3 rounded-lg border space-y-3">
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <Label className="text-xs">集数</Label>
+                                          <Input
+                                            type="number"
+                                            value={episodeNumber}
+                                            onChange={(e) => setEpisodeNumber(e.target.value)}
+                                            className="h-8"
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label className="text-xs">标题</Label>
+                                          <Input
+                                            value={episodeTitle}
+                                            onChange={(e) => setEpisodeTitle(e.target.value)}
+                                            className="h-8"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button size="sm" onClick={() => saveEpisodeEdit(episode.id)} className="flex-1">保存</Button>
+                                        <Button size="sm" variant="secondary" onClick={cancelEditingEpisode} className="flex-1">取消</Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between p-3 rounded-lg border">
+                                      <div>
+                                        <p className="font-medium">
+                                          第{episode.episode_number}集 - {episode.title}
+                                        </p>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handlePreviewClick(episode)}
+                                        >
+                                          <Play className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => startEditingEpisode(episode)}
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleUploadClick(episode)}
+                                        >
+                                          <Upload className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleDeleteEpisode(episode.id)}
+                                        >
+                                          <Trash className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </>
+                          )}
                         </div>
                       </>
                     )}

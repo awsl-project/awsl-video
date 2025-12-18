@@ -31,14 +31,25 @@ export const getFullUrl = (path: string | null | undefined): string => {
   return `${API_BASE_URL}${path}`;
 };
 
-// Add auth token to requests (user token or admin token)
+// Add auth token to requests
+// User APIs use: Authorization header
+// Admin APIs use: X-Admin-Authorization header
 api.interceptors.request.use((config) => {
   const userToken = localStorage.getItem('user_token');
   const adminToken = localStorage.getItem('admin_token');
-  const token = userToken || adminToken;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+
+  // Use different headers for admin vs user APIs
+  const isAdminApi = config.url?.startsWith('/admin-api');
+
+  if (isAdminApi && adminToken) {
+    config.headers['X-Admin-Authorization'] = `Bearer ${adminToken}`;
+  } else if (userToken) {
+    config.headers.Authorization = `Bearer ${userToken}`;
+  } else if (adminToken && !isAdminApi) {
+    // Fallback: use admin token for non-admin APIs if no user token
+    config.headers.Authorization = `Bearer ${adminToken}`;
   }
+
   return config;
 });
 
@@ -82,9 +93,9 @@ api.interceptors.response.use(
 // API functions
 export const videoApi = {
   // User APIs
-  getVideos: (page = 1, pageSize = 20, category = '', search = '', includeEmpty = false) =>
+  getVideos: (page = 1, pageSize = 20, category = '', search = '', includeEmpty = false, sortBy = 'default') =>
     api.get<PaginatedVideos>('/api/videos', {
-      params: { page, page_size: pageSize, category, search, include_empty: includeEmpty }
+      params: { page, page_size: pageSize, category, search, include_empty: includeEmpty, sort_by: sortBy }
     }),
 
   getCategories: () =>
@@ -123,20 +134,17 @@ export const videoApi = {
   updateEpisode: (episodeId: number, data: { episode_number?: number; title?: string }) =>
     api.put<Episode>(`/admin-api/episodes/${episodeId}`, data),
 
-  uploadVideo: (episodeId: number, formData: FormData, onProgress?: (progress: number) => void) => {
-    return api.post(`/admin-api/episodes/${episodeId}/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (progressEvent) => {
-        if (progressEvent.total && onProgress) {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          onProgress(progress);
-        }
-      },
-    });
-  },
-
   deleteEpisode: (episodeId: number) =>
     api.delete(`/admin-api/episodes/${episodeId}`),
+
+  // New upload flow with JWT token
+  getUploadToken: () =>
+    api.get<{ success: boolean; token: string; expires_in: number; expires_at: string; chat_id: string; storage_url: string }>(
+      '/admin-api/upload/token'
+    ),
+
+  finalizeVideoUpload: (episodeId: number, chunks: any[]) =>
+    api.post(`/admin-api/episodes/${episodeId}/upload/finalize`, { chunks }),
 };
 
 // User API functions

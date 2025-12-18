@@ -186,3 +186,15 @@ class VideoStats(BaseModel):
     comments_count: int
     user_liked: bool = False
     user_favorited: bool = False
+
+
+# Upload Finalization Schemas
+class VideoChunkInfo(BaseModel):
+    chunk_index: int
+    file_id: str
+    file_size: Optional[int] = None
+    chunk_size: Optional[int] = None
+
+
+class FinalizeVideoUploadRequest(BaseModel):
+    chunks: List[VideoChunkInfo]
