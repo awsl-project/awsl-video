@@ -38,6 +38,8 @@ export default function AdminPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingEpisode, setUploadingEpisode] = useState<Episode | null>(null);
+  const [uploadSpeed, setUploadSpeed] = useState(0); // MB/s
+  const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 }); // 当前分片/总分片
   const [previewingEpisode, setPreviewingEpisode] = useState<Episode | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [filterCategory, setFilterCategory] = useState('');
@@ -318,65 +320,118 @@ export default function AdminPage() {
 
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadSpeed(0);
+    setUploadStats({ current: 0, total: 0 });
+
+    const startTime = Date.now();
+    let uploadedBytes = 0;
 
     try {
       // Step 1: Get JWT token from backend
       const tokenResponse = await videoApi.getUploadToken();
       const { token, storage_url } = tokenResponse.data;
 
-      // Step 2: Slice file in browser (10MB chunks)
-      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+      // Step 2: 配置上传参数
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 固定 10MB 分片
+      const MAX_CONCURRENT = 3; // 最大并发数
+      const MAX_RETRIES = 3; // 每个分片最大重试次数
       const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
       const chunks: Array<{ chunk_index: number; file_id: string; file_size: number }> = [];
+
+      setUploadStats({ current: 0, total: totalChunks });
 
       // Get file extension from original file
       const fileExtension = videoFile.name.substring(videoFile.name.lastIndexOf('.'));
       const fileName = `${selectedVideo?.title}_EP${uploadingEpisode.episode_number}_${uploadingEpisode.title}${fileExtension}`;
 
-      // Step 3: Upload each chunk to awsl-telegram-storage
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
+      // Step 3: 上传单个分片的函数（带重试机制）
+      const uploadChunk = async (chunkIndex: number): Promise<void> => {
+        const start = chunkIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, videoFile.size);
         const chunkBlob = videoFile.slice(start, end);
+        const chunkSize = end - start;
 
         const formData = new FormData();
-        const chunkFileName = `${fileName}.part${i + 1}`;
+        const chunkFileName = `${fileName}.part${chunkIndex + 1}`;
         formData.append('file', chunkBlob, chunkFileName);
         formData.append('media_type', 'document');
 
-        const uploadResponse = await fetch(`${storage_url}/api/upload`, {
-          method: 'POST',
-          headers: {
-            'X-Api-Token': token,
-          },
-          body: formData,
-        });
+        let lastError: Error | null = null;
 
-        if (!uploadResponse.ok) {
-          const errorText = await uploadResponse.text();
-          throw new Error(`Chunk ${i + 1} upload failed: ${errorText}`);
+        // 重试机制（指数退避）
+        for (let retry = 0; retry < MAX_RETRIES; retry++) {
+          try {
+            const chunkStartTime = Date.now();
+
+            const uploadResponse = await fetch(`${storage_url}/api/upload`, {
+              method: 'POST',
+              headers: {
+                'X-Api-Token': token,
+              },
+              body: formData,
+            });
+
+            if (!uploadResponse.ok) {
+              const errorText = await uploadResponse.text();
+              throw new Error(`HTTP ${uploadResponse.status}: ${errorText}`);
+            }
+
+            const uploadResult = await uploadResponse.json();
+
+            if (!uploadResult.success || !uploadResult.files || uploadResult.files.length === 0) {
+              throw new Error('Invalid response from server');
+            }
+
+            // 成功上传
+            const fileId = uploadResult.files[0].file_id;
+            chunks[chunkIndex] = {
+              chunk_index: chunkIndex,
+              file_id: fileId,
+              file_size: chunkSize,
+            };
+
+            // 更新统计信息
+            uploadedBytes += chunkSize;
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            const speedMBps = (uploadedBytes / 1024 / 1024) / elapsedSeconds;
+            setUploadSpeed(speedMBps);
+
+            // 更新进度（0-85% 用于上传分片）
+            const completedChunks = chunks.filter(c => c !== undefined).length;
+            const progress = Math.floor((completedChunks / totalChunks) * 85);
+            setUploadProgress(progress);
+            setUploadStats({ current: completedChunks, total: totalChunks });
+
+            return; // 成功，退出重试循环
+          } catch (error) {
+            lastError = error as Error;
+            console.warn(`Chunk ${chunkIndex + 1} upload attempt ${retry + 1} failed:`, error);
+
+            if (retry < MAX_RETRIES - 1) {
+              // 指数退避：第1次等1秒，第2次等2秒，第3次等4秒
+              const delayMs = Math.pow(2, retry) * 1000;
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+          }
         }
 
-        const uploadResult = await uploadResponse.json();
+        // 所有重试失败
+        throw new Error(
+          `分片 ${chunkIndex + 1}/${totalChunks} 上传失败（已重试 ${MAX_RETRIES} 次）: ${lastError?.message || '未知错误'}`
+        );
+      };
 
-        if (!uploadResult.success || !uploadResult.files || uploadResult.files.length === 0) {
-          throw new Error(`Chunk ${i + 1} upload failed: Invalid response`);
+      // Step 4: 并行上传分片（分批控制并发）
+      for (let i = 0; i < totalChunks; i += MAX_CONCURRENT) {
+        const batch = [];
+        for (let j = i; j < Math.min(i + MAX_CONCURRENT, totalChunks); j++) {
+          batch.push(uploadChunk(j));
         }
-
-        // For document type, only one file_id is returned
-        const fileId = uploadResult.files[0].file_id;
-        chunks.push({
-          chunk_index: i,
-          file_id: fileId,
-          file_size: end - start,
-        });
-
-        // Update progress (0-85% for uploading chunks)
-        const progress = Math.floor(((i + 1) / totalChunks) * 85);
-        setUploadProgress(progress);
+        // 等待当前批次的所有分片完成
+        await Promise.all(batch);
       }
 
-      // Step 4: Finalize upload by sending chunks to backend
+      // Step 5: Finalize upload by sending chunks to backend
       setUploadProgress(90);
       await videoApi.finalizeVideoUpload(uploadingEpisode.id, chunks);
 
@@ -389,17 +444,21 @@ export default function AdminPage() {
         totalSize: videoFile.size,
         chunkSize: CHUNK_SIZE,
         chunks: chunks.length,
+        totalTime: ((Date.now() - startTime) / 1000).toFixed(2) + 's',
+        averageSpeed: uploadSpeed.toFixed(2) + ' MB/s',
       });
 
       toast({
         variant: "success",
         title: "成功",
-        description: "视频上传成功",
+        description: `视频上传成功 (平均速度: ${uploadSpeed.toFixed(2)} MB/s)`,
       });
 
       setShowUploadDialog(false);
       setVideoFile(null);
       setUploadProgress(0);
+      setUploadSpeed(0);
+      setUploadStats({ current: 0, total: 0 });
       setUploadingEpisode(null);
 
       if (selectedVideo) {
@@ -984,8 +1043,16 @@ export default function AdminPage() {
                   <span className="font-medium">{uploadProgress}%</span>
                 </div>
                 <Progress value={uploadProgress} />
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <div>
+                    <span className="font-medium">分片进度:</span> {uploadStats.current}/{uploadStats.total}
+                  </div>
+                  <div className="text-right">
+                    <span className="font-medium">上传速度:</span> {uploadSpeed > 0 ? `${uploadSpeed.toFixed(2)} MB/s` : '计算中...'}
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground text-center">
-                  正在上传，请勿关闭窗口...
+                  正在并行上传 (最多3个分片同时进行)，请勿关闭窗口...
                 </p>
               </div>
             )}
