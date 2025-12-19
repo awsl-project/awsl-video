@@ -324,7 +324,6 @@ export default function AdminPage() {
     setUploadStats({ current: 0, total: 0 });
 
     const startTime = Date.now();
-    let uploadedBytes = 0;
 
     try {
       // Step 1: Get JWT token from backend
@@ -388,14 +387,14 @@ export default function AdminPage() {
               file_size: chunkSize,
             };
 
-            // 更新统计信息
-            uploadedBytes += chunkSize;
+            // 更新统计信息（使用已完成的分片总大小计算，避免并发竞态）
+            const completedChunks = chunks.filter(c => c !== undefined).length;
+            const uploadedBytes = chunks.filter(c => c !== undefined).reduce((sum, c) => sum + c.file_size, 0);
             const elapsedSeconds = (Date.now() - startTime) / 1000;
             const speedMBps = (uploadedBytes / 1024 / 1024) / elapsedSeconds;
             setUploadSpeed(speedMBps);
 
             // 更新进度（0-85% 用于上传分片）
-            const completedChunks = chunks.filter(c => c !== undefined).length;
             const progress = Math.floor((completedChunks / totalChunks) * 85);
             setUploadProgress(progress);
             setUploadStats({ current: completedChunks, total: totalChunks });
@@ -435,6 +434,10 @@ export default function AdminPage() {
 
       setUploadProgress(100);
 
+      // 计算最终平均速度（基于实际文件大小和总时间）
+      const totalTime = (Date.now() - startTime) / 1000;
+      const finalSpeed = (videoFile.size / 1024 / 1024) / totalTime;
+
       // Log chunk details in console only
       console.log(`Video uploaded successfully with ${totalChunks} chunks`, {
         episodeId: uploadingEpisode.id,
@@ -442,14 +445,14 @@ export default function AdminPage() {
         totalSize: videoFile.size,
         chunkSize: CHUNK_SIZE,
         chunks: chunks.length,
-        totalTime: ((Date.now() - startTime) / 1000).toFixed(2) + 's',
-        averageSpeed: uploadSpeed.toFixed(2) + ' MB/s',
+        totalTime: totalTime.toFixed(2) + 's',
+        averageSpeed: finalSpeed.toFixed(2) + ' MB/s',
       });
 
       toast({
         variant: "success",
         title: "成功",
-        description: `视频上传成功 (平均速度: ${uploadSpeed.toFixed(2)} MB/s)`,
+        description: `视频上传成功 (平均速度: ${finalSpeed.toFixed(2)} MB/s)`,
       });
 
       setShowUploadDialog(false);
