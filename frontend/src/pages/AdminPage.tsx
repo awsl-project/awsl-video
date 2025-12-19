@@ -361,8 +361,6 @@ export default function AdminPage() {
         // 重试机制（指数退避）
         for (let retry = 0; retry < MAX_RETRIES; retry++) {
           try {
-            const chunkStartTime = Date.now();
-
             const uploadResponse = await fetch(`${storage_url}/api/upload`, {
               method: 'POST',
               headers: {
