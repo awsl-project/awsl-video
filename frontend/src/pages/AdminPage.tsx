@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [uploadingEpisode, setUploadingEpisode] = useState<Episode | null>(null);
   const [uploadSpeed, setUploadSpeed] = useState(0); // MB/s
   const [uploadStats, setUploadStats] = useState({ current: 0, total: 0 }); // 当前分片/总分片
+  const [retryStatus, setRetryStatus] = useState<string>(''); // 重试状态信息
   const [previewingEpisode, setPreviewingEpisode] = useState<Episode | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [filterCategory, setFilterCategory] = useState('');
@@ -322,6 +323,7 @@ export default function AdminPage() {
     setUploadProgress(0);
     setUploadSpeed(0);
     setUploadStats({ current: 0, total: 0 });
+    setRetryStatus('');
 
     const startTime = Date.now();
 
@@ -333,18 +335,60 @@ export default function AdminPage() {
       // Step 2: 配置上传参数
       const CHUNK_SIZE = 10 * 1024 * 1024; // 固定 10MB 分片
       const MAX_CONCURRENT = 3; // 最大并发数
-      const MAX_RETRIES = 3; // 每个分片最大重试次数
+      const MAX_RETRIES = 5; // 每个分片最大重试次数（增加到5次以应对频繁限流）
       const totalChunks = Math.ceil(videoFile.size / CHUNK_SIZE);
-      const chunks: Array<{ chunk_index: number; file_id: string; file_size: number }> = [];
-
-      setUploadStats({ current: 0, total: totalChunks });
+      const chunks: Array<{ chunk_index: number; file_id: string; file_size: number } | undefined> = new Array(totalChunks);
 
       // Get file extension from original file
       const fileExtension = videoFile.name.substring(videoFile.name.lastIndexOf('.'));
       const fileName = `${selectedVideo?.title}_EP${uploadingEpisode.episode_number}_${uploadingEpisode.title}${fileExtension}`;
 
-      // Step 3: 上传单个分片的函数（带重试机制）
+      // Upload state for persistence and resume
+      // Use a deterministic uploadId based on episode and file properties for resume capability
+      const uploadId = `${uploadingEpisode.id}_${fileName}_${videoFile.size}`;
+      const storageKey = `upload_${uploadId}`;
+
+      // Step 2.5: 尝试从 localStorage 恢复未完成的上传
+      const savedState = localStorage.getItem(storageKey);
+      if (savedState) {
+        try {
+          const parsed = JSON.parse(savedState);
+          if (parsed.fileName === fileName && parsed.totalChunks === totalChunks && parsed.fileSize === videoFile.size) {
+            // 恢复已完成的分片
+            for (const [idx, chunk] of Object.entries(parsed.completedChunks || {})) {
+              chunks[parseInt(idx)] = chunk as any;
+            }
+            const resumedCount = chunks.filter(c => c !== undefined).length;
+            if (resumedCount > 0) {
+              toast({
+                variant: "default",
+                title: "恢复上传",
+                description: `检测到未完成的上传，已恢复 ${resumedCount}/${totalChunks} 个分片`,
+              });
+              console.log(`Resumed upload: ${resumedCount}/${totalChunks} chunks already uploaded`);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to parse saved upload state:', e);
+        }
+      }
+
+      setUploadStats({ current: chunks.filter(c => c !== undefined).length, total: totalChunks });
+
+      // Helper: 解析 "Too Many Requests: retry after X" 错误
+      const parseRetryAfter = (errorMessage: string): number | null => {
+        const match = errorMessage.match(/retry after (\d+)/i);
+        return match ? parseInt(match[1]) : null;
+      };
+
+      // Step 3: 上传单个分片的函数（带速率限制感知的重试机制）
       const uploadChunk = async (chunkIndex: number): Promise<void> => {
+        // 如果分片已上传，跳过
+        if (chunks[chunkIndex]) {
+          console.log(`Chunk ${chunkIndex + 1} already uploaded, skipping`);
+          return;
+        }
+
         const start = chunkIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, videoFile.size);
         const chunkBlob = videoFile.slice(start, end);
@@ -356,8 +400,9 @@ export default function AdminPage() {
         formData.append('media_type', 'document');
 
         let lastError: Error | null = null;
+        let rateLimitRetries = 0; // 速率限制重试计数（仅用于显示）
 
-        // 重试机制（指数退避）
+        // 重试机制（指数退避 + 速率限制无限重试）
         for (let retry = 0; retry < MAX_RETRIES; retry++) {
           try {
             const uploadResponse = await fetch(`${storage_url}/api/upload`, {
@@ -367,6 +412,41 @@ export default function AdminPage() {
               },
               body: formData,
             });
+
+            // 处理速率限制错误 (429 或 400 with rate limit message)
+            if (uploadResponse.status === 429 || uploadResponse.status === 400) {
+              const errorText = await uploadResponse.text();
+              let errorData;
+              try {
+                errorData = JSON.parse(errorText);
+              } catch {
+                errorData = { error: errorText };
+              }
+
+              const errorMessage = errorData.error || errorText;
+              const retryAfter = parseRetryAfter(errorMessage);
+
+              if (retryAfter !== null) {
+                // 速率限制：一直重试直到成功，不计入 MAX_RETRIES
+                rateLimitRetries++;
+                const waitSeconds = Math.min(retryAfter, 120); // 最多等待120秒
+                setRetryStatus(`速率限制：等待 ${waitSeconds} 秒后重试分片 ${chunkIndex + 1}/${totalChunks} (速率限制重试 #${rateLimitRetries})`);
+                console.warn(`Rate limited on chunk ${chunkIndex + 1}, waiting ${waitSeconds}s (rate limit retry #${rateLimitRetries})`);
+
+                // 倒计时显示
+                for (let i = waitSeconds; i > 0; i--) {
+                  setRetryStatus(`速率限制：等待 ${i} 秒后重试分片 ${chunkIndex + 1}/${totalChunks} (速率限制重试 #${rateLimitRetries})`);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                setRetryStatus('');
+
+                // 不计入 retry 次数，继续当前循环
+                retry--;
+                continue;
+              }
+
+              throw new Error(`HTTP ${uploadResponse.status}: ${errorMessage}`);
+            }
 
             if (!uploadResponse.ok) {
               const errorText = await uploadResponse.text();
@@ -387,11 +467,27 @@ export default function AdminPage() {
               file_size: chunkSize,
             };
 
+            // 保存上传状态到 localStorage
+            const uploadState = {
+              uploadId,
+              episodeId: uploadingEpisode.id,
+              fileName,
+              fileSize: videoFile.size,
+              totalChunks,
+              completedChunks: Object.fromEntries(
+                chunks
+                  .map((c, i) => [i, c])
+                  .filter(([_, c]) => c !== undefined)
+              ),
+              timestamp: Date.now(),
+            };
+            localStorage.setItem(storageKey, JSON.stringify(uploadState));
+
             // 更新统计信息（使用已完成的分片总大小计算，避免并发竞态）
             const completedChunks = chunks.filter(c => c !== undefined).length;
-            const uploadedBytes = chunks.filter(c => c !== undefined).reduce((sum, c) => sum + c.file_size, 0);
+            const uploadedBytes = chunks.filter(c => c !== undefined).reduce((sum, c) => sum + c!.file_size, 0);
             const elapsedSeconds = (Date.now() - startTime) / 1000;
-            const speedMBps = (uploadedBytes / 1024 / 1024) / elapsedSeconds;
+            const speedMBps = elapsedSeconds > 0 ? (uploadedBytes / 1024 / 1024) / elapsedSeconds : 0;
             setUploadSpeed(speedMBps);
 
             // 更新进度（0-85% 用于上传分片）
@@ -405,9 +501,11 @@ export default function AdminPage() {
             console.warn(`Chunk ${chunkIndex + 1} upload attempt ${retry + 1} failed:`, error);
 
             if (retry < MAX_RETRIES - 1) {
-              // 指数退避：第1次等1秒，第2次等2秒，第3次等4秒
-              const delayMs = Math.pow(2, retry) * 1000;
+              // 指数退避：1s, 2s, 4s, 8s, 16s
+              const delayMs = Math.min(Math.pow(2, retry) * 1000, 16000);
+              setRetryStatus(`分片 ${chunkIndex + 1}/${totalChunks} 失败，${(delayMs / 1000).toFixed(0)}秒后重试 (尝试 ${retry + 2}/${MAX_RETRIES})`);
               await new Promise(resolve => setTimeout(resolve, delayMs));
+              setRetryStatus('');
             }
           }
         }
@@ -430,9 +528,13 @@ export default function AdminPage() {
 
       // Step 5: Finalize upload by sending chunks to backend
       setUploadProgress(90);
-      await videoApi.finalizeVideoUpload(uploadingEpisode.id, chunks);
+      const finalChunks = chunks.filter(c => c !== undefined) as Array<{ chunk_index: number; file_id: string; file_size: number }>;
+      await videoApi.finalizeVideoUpload(uploadingEpisode.id, finalChunks);
 
       setUploadProgress(100);
+
+      // 清除 localStorage 中的上传状态
+      localStorage.removeItem(storageKey);
 
       // 计算最终平均速度（基于实际文件大小和总时间）
       const totalTime = (Date.now() - startTime) / 1000;
@@ -444,7 +546,7 @@ export default function AdminPage() {
         fileName,
         totalSize: videoFile.size,
         chunkSize: CHUNK_SIZE,
-        chunks: chunks.length,
+        chunks: finalChunks.length,
         totalTime: totalTime.toFixed(2) + 's',
         averageSpeed: finalSpeed.toFixed(2) + ' MB/s',
       });
@@ -460,6 +562,7 @@ export default function AdminPage() {
       setUploadProgress(0);
       setUploadSpeed(0);
       setUploadStats({ current: 0, total: 0 });
+      setRetryStatus('');
       setUploadingEpisode(null);
 
       if (selectedVideo) {
@@ -470,10 +573,12 @@ export default function AdminPage() {
       toast({
         variant: "destructive",
         title: "上传失败",
-        description: error.message || "视频上传失败，请重试",
+        description: error.message || "视频上传失败，请重新尝试。未完成的上传已保存，下次上传会自动恢复。",
+        duration: 8000,
       });
     } finally {
       setIsUploading(false);
+      setRetryStatus('');
     }
   };
 
@@ -1052,9 +1157,15 @@ export default function AdminPage() {
                     <span className="font-medium">上传速度:</span> {uploadSpeed > 0 ? `${uploadSpeed.toFixed(2)} MB/s` : '计算中...'}
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  正在并行上传 (最多3个分片同时进行)，请勿关闭窗口...
-                </p>
+                {retryStatus ? (
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 text-center font-medium bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded border border-yellow-200 dark:border-yellow-800">
+                    {retryStatus}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    正在并行上传 (最多3个分片同时进行)，请勿关闭窗口...
+                  </p>
+                )}
               </div>
             )}
             <div className="flex gap-2">
