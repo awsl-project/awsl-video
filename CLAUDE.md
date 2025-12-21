@@ -94,11 +94,13 @@ tsc -b && pnpm build
 
 ### Deploy to Vercel (Production)
 
-**Deploy command:**
+**⚠️ MUST deploy from project root (NOT frontend/):**
 ```bash
-# IMPORTANT: Run from project root, NOT from frontend/
+cd /path/to/awsl-video  # Ensure at root
 vercel --prod
 ```
+
+**Why?** Root contains `vercel.json` that configures both frontend and backend deployment.
 
 ## Architecture
 
