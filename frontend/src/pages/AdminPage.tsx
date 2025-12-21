@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { LogOut, Plus, Video as VideoIcon, Loader2, Upload, Trash, Image as ImageIcon, X, Edit, Play, Search } from 'lucide-react';
+import { LogOut, Plus, Video as VideoIcon, Loader2, Upload, Trash, Image as ImageIcon, X, Edit, Play, Search, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -715,9 +715,15 @@ export default function AdminPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <VideoIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">管理后台</h1>
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+              <Home className="h-4 w-4 mr-2" />
+              返回主页
+            </Button>
+            <div className="flex items-center gap-2">
+              <VideoIcon className="h-6 w-6 text-primary" />
+              <h1 className="text-xl font-bold">管理后台</h1>
+            </div>
           </div>
           <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleLogout}>
             <LogOut className="h-4 w-4 mr-2" />
