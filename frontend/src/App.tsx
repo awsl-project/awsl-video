@@ -9,6 +9,7 @@ import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import WatchHistoryPage from './pages/WatchHistoryPage';
 import FavoritesPage from './pages/FavoritesPage';
 import ProfilePage from './pages/ProfilePage';
+import RegionBlockedPage from './pages/RegionBlockedPage';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ApiInterceptor } from '@/components/ApiInterceptor';
@@ -27,6 +28,7 @@ function App() {
           <Route path="/history" element={<WatchHistoryPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/region-blocked" element={<RegionBlockedPage />} />
           <Route path="/admin/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminDashboardPage />} />
           <Route path="/admin/edit/:videoId" element={<AdminVideoEditPage />} />

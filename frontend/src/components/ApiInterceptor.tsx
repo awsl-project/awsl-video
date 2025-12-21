@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/api';
 import { useToast } from '@/hooks/use-toast';
 
 export function ApiInterceptor() {
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Request interceptor
@@ -28,6 +30,12 @@ export function ApiInterceptor() {
         // Handle errors globally
         const status = error.response?.status;
         const message = error.response?.data?.detail || error.message || '请求失败';
+
+        // Handle region blocking (HTTP 451)
+        if (status === 451) {
+          navigate('/region-blocked');
+          return Promise.reject(error);
+        }
 
         // Don't show toast for specific status codes that are handled locally
         const skipToastForStatus = [401, 404];
