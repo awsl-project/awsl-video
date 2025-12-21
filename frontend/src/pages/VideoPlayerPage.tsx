@@ -250,7 +250,7 @@ export default function VideoPlayerPage() {
                 <VideoInteractions videoId={parseInt(videoId!)} />
 
                 {video.description && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">
+                  <p className="text-sm text-muted-foreground leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>
                     {video.description}
                   </p>
                 )}

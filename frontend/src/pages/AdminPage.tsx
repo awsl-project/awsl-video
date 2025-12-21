@@ -877,6 +877,8 @@ export default function AdminPage() {
                           <Textarea
                             value={videoDesc}
                             onChange={(e) => setVideoDesc(e.target.value)}
+                            rows={5}
+                            placeholder="请输入视频简介，支持多行文本"
                           />
                         </div>
                         <div>
@@ -907,7 +909,9 @@ export default function AdminPage() {
                           />
                         )}
                         {selectedVideo.description && (
-                          <p className="text-sm text-muted-foreground mb-4">{selectedVideo.description}</p>
+                          <p className="text-sm text-muted-foreground mb-4" style={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedVideo.description}
+                          </p>
                         )}
                         {selectedVideo.category && (
                           <div className="mb-4">
@@ -1050,6 +1054,8 @@ export default function AdminPage() {
               <Textarea
                 value={videoDesc}
                 onChange={(e) => setVideoDesc(e.target.value)}
+                rows={5}
+                placeholder="请输入视频简介，支持多行文本"
               />
             </div>
             <div>

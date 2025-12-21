@@ -2,7 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import HomePage from './pages/HomePage';
 import VideoPlayerPage from './pages/VideoPlayerPage';
 import LoginPage from './pages/LoginPage';
-import AdminPage from './pages/AdminPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminVideoEditPage from './pages/AdminVideoEditPage';
 import UserLoginPage from './pages/UserLoginPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import WatchHistoryPage from './pages/WatchHistoryPage';
@@ -27,8 +28,8 @@ function App() {
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/admin/login" element={<LoginPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/admin/:videoId" element={<AdminPage />} />
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/edit/:videoId" element={<AdminVideoEditPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster />

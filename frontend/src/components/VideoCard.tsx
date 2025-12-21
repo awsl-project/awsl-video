@@ -61,7 +61,7 @@ export function VideoCard({
 
       {/* Info */}
       <div className="p-3">
-        <h3 className="font-semibold text-base line-clamp-2 group-hover:text-primary transition-colors leading-tight">
+        <h3 className="font-semibold text-base overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-primary transition-colors">
           {video.title}
         </h3>
 
