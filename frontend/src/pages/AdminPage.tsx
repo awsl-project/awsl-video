@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingEpisode, setUploadingEpisode] = useState<Episode | null>(null);
@@ -123,6 +124,15 @@ export default function AdminPage() {
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, [showVideoForm, showCoverUploadDialog]);
+
+  // Clean up video preview URL on component unmount
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+    };
+  }, [videoPreviewUrl]);
 
   const fetchCategories = async () => {
     try {
@@ -298,7 +308,15 @@ export default function AdminPage() {
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Clean up previous preview URL
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+
       setVideoFile(file);
+      // Create local preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setVideoPreviewUrl(previewUrl);
     }
   };
 
@@ -307,7 +325,15 @@ export default function AdminPage() {
     e.stopPropagation();
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('video/')) {
+      // Clean up previous preview URL
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+
       setVideoFile(file);
+      // Create local preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setVideoPreviewUrl(previewUrl);
     }
   };
 
@@ -559,6 +585,11 @@ export default function AdminPage() {
 
       setShowUploadDialog(false);
       setVideoFile(null);
+      // Clean up preview URL
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+      setVideoPreviewUrl('');
       setUploadProgress(0);
       setUploadSpeed(0);
       setUploadStats({ current: 0, total: 0 });
@@ -1078,7 +1109,14 @@ export default function AdminPage() {
       </Dialog>
 
       {/* Upload Video Dialog */}
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+      <Dialog open={showUploadDialog} onOpenChange={(open) => {
+        if (!open && videoPreviewUrl) {
+          // Clean up preview URL when dialog closes
+          URL.revokeObjectURL(videoPreviewUrl);
+          setVideoPreviewUrl('');
+        }
+        setShowUploadDialog(open);
+      }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>上传视频</DialogTitle>
@@ -1093,28 +1131,50 @@ export default function AdminPage() {
               <Label>选择视频文件</Label>
               <div className="mt-2">
                 {videoFile ? (
-                  <div className="p-4 border rounded-lg bg-gray-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <VideoIcon className="h-10 w-10 text-primary flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{videoFile.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {(videoFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
+                  <div className="space-y-3">
+                    {/* File Info */}
+                    <div className="p-3 border rounded-lg bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <VideoIcon className="h-8 w-8 text-primary flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate text-sm">{videoFile.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(videoFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          </div>
                         </div>
+                        {!isUploading && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (videoPreviewUrl) {
+                                URL.revokeObjectURL(videoPreviewUrl);
+                              }
+                              setVideoFile(null);
+                              setVideoPreviewUrl('');
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
-                      {!isUploading && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setVideoFile(null)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
                     </div>
+                    {/* Video Preview */}
+                    {videoPreviewUrl && (
+                      <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                        <video
+                          className="w-full h-full"
+                          controls
+                          src={videoPreviewUrl}
+                          key={videoPreviewUrl}
+                        >
+                          您的浏览器不支持视频播放
+                        </video>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -1188,8 +1248,13 @@ export default function AdminPage() {
                 variant="secondary"
                 className="flex-1"
                 onClick={() => {
+                  // Clean up preview URL
+                  if (videoPreviewUrl) {
+                    URL.revokeObjectURL(videoPreviewUrl);
+                  }
                   setShowUploadDialog(false);
                   setVideoFile(null);
+                  setVideoPreviewUrl('');
                   setUploadProgress(0);
                 }}
                 disabled={isUploading}
