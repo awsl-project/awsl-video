@@ -628,9 +628,22 @@ export default function AdminVideoEditPage() {
       <div className="min-h-screen bg-gray-50">
         <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
           <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold text-primary">编辑视频</h1>
+              <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                返回列表
+              </Button>
+            </div>
             <div className="flex items-center gap-2">
-              <VideoIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">管理后台</h1>
+              <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => navigate('/')}>
+                <Home className="h-4 w-4 mr-2" />
+                返回主页
+              </Button>
+              <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                退出登录
+              </Button>
             </div>
           </div>
         </header>
@@ -648,9 +661,22 @@ export default function AdminVideoEditPage() {
       <div className="min-h-screen bg-gray-50">
         <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
           <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold text-primary">编辑视频</h1>
+              <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                返回列表
+              </Button>
+            </div>
             <div className="flex items-center gap-2">
-              <VideoIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">管理后台</h1>
+              <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => navigate('/')}>
+                <Home className="h-4 w-4 mr-2" />
+                返回主页
+              </Button>
+              <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                退出登录
+              </Button>
             </div>
           </div>
         </header>
