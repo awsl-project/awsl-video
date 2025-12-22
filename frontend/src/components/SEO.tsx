@@ -7,6 +7,7 @@ interface SEOProps {
   url?: string;
   type?: 'website' | 'video.other' | 'article';
   keywords?: string;
+  noindex?: boolean;
   video?: {
     title: string;
     description?: string;
@@ -19,6 +20,13 @@ interface SEOProps {
     name: string;
     url: string;
   }>;
+  article?: {
+    publishedTime?: string;
+    modifiedTime?: string;
+    author?: string;
+    section?: string;
+    tags?: string[];
+  };
 }
 
 export function SEO({
@@ -28,8 +36,10 @@ export function SEO({
   url,
   type = 'website',
   keywords,
+  noindex = false,
   video,
   breadcrumbs,
+  article,
 }: SEOProps) {
   const fullTitle = title === 'Awsl Video' ? title : `${title} - Awsl Video`;
   const fullUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
@@ -111,6 +121,33 @@ export function SEO({
       structuredData.push(videoSchema);
     }
 
+    // Article schema for article pages
+    if (article && type === 'article') {
+      const articleSchema: any = {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: title,
+        description: description,
+        image: absoluteImageUrl,
+        datePublished: article.publishedTime,
+        dateModified: article.modifiedTime || article.publishedTime,
+        author: {
+          '@type': 'Person',
+          name: article.author || 'Awsl Video',
+        },
+      };
+
+      if (article.section) {
+        articleSchema.articleSection = article.section;
+      }
+
+      if (article.tags && article.tags.length > 0) {
+        articleSchema.keywords = article.tags.join(', ');
+      }
+
+      structuredData.push(articleSchema);
+    }
+
     return structuredData;
   };
 
@@ -153,9 +190,22 @@ export function SEO({
         </>
       )}
 
+      {/* Article-specific Open Graph Tags */}
+      {article && type === 'article' && (
+        <>
+          {article.publishedTime && <meta property="article:published_time" content={article.publishedTime} />}
+          {article.modifiedTime && <meta property="article:modified_time" content={article.modifiedTime} />}
+          {article.author && <meta property="article:author" content={article.author} />}
+          {article.section && <meta property="article:section" content={article.section} />}
+          {article.tags && article.tags.map((tag, index) => (
+            <meta key={index} property="article:tag" content={tag} />
+          ))}
+        </>
+      )}
+
       {/* Additional SEO Meta Tags */}
-      <meta name="robots" content="index, follow" />
-      <meta name="googlebot" content="index, follow" />
+      <meta name="robots" content={noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'} />
+      <meta name="googlebot" content={noindex ? 'noindex, nofollow' : 'index, follow'} />
       <link rel="canonical" href={fullUrl} />
 
       {/* Structured Data (JSON-LD) */}

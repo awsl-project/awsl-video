@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { VideoCard } from '@/components/VideoCard';
+import { SEO } from '@/components/SEO';
 
 interface FavoriteItem {
   id: number;
@@ -68,6 +69,12 @@ export default function FavoritesPage() {
 
   return (
     <div className="min-h-screen">
+      <SEO
+        title="我的收藏"
+        description={`您收藏的所有视频，共 ${favorites.length} 个视频`}
+        keywords="视频收藏,我的收藏,收藏夹,视频列表"
+        type="website"
+      />
       <Header showSearch={false} showCategories={false} />
       <div className="container mx-auto px-4 py-8">
       <div className="mb-8">

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { VideoCard } from '@/components/VideoCard';
+import { SEO } from '@/components/SEO';
 
 export default function WatchHistoryPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -62,6 +63,12 @@ export default function WatchHistoryPage() {
 
   return (
     <div className="min-h-screen">
+      <SEO
+        title="观看历史"
+        description={`您的观看历史，共 ${history.length} 个视频，继续观看您上次未看完的视频`}
+        keywords="观看历史,播放历史,视频历史,继续观看"
+        type="website"
+      />
       <Header showSearch={false} showCategories={false} />
       <div className="container mx-auto px-4 py-8">
       <div className="mb-8">

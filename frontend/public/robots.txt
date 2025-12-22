@@ -1,0 +1,28 @@
+# robots.txt for Awsl Video
+# Allow all search engines to crawl the site
+
+User-agent: *
+Allow: /
+
+# Disallow admin pages
+Disallow: /admin
+Disallow: /admin-api/
+
+# Disallow login pages (to avoid duplicate content in search results)
+Disallow: /login
+Disallow: /oauth/
+
+# Disallow user-specific pages (private content)
+Disallow: /favorites
+Disallow: /history
+Disallow: /profile
+
+# Allow video and category pages
+Allow: /video/
+Allow: /?category=*
+
+# Crawl-delay (optional, adjust if needed)
+# Crawl-delay: 1
+
+# Sitemap location
+Sitemap: /sitemap.xml

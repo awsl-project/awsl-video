@@ -1,9 +1,21 @@
 import { Globe, ShieldAlert } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Header } from '@/components/Header';
+import { SEO } from '@/components/SEO';
 
 export default function RegionBlockedPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-gray-50 to-purple-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50">
+      <SEO
+        title="访问受限 - Access Restricted"
+        description="根据相关法律法规和政策要求，本服务暂不支持您所在地区访问"
+        type="website"
+      />
+      <Header
+        showSearch={false}
+        showCategories={false}
+      />
+      <div className="flex items-center justify-center p-4 min-h-[calc(100vh-4rem)]">
       <Card className="max-w-2xl w-full border-0 shadow-2xl">
         <CardContent className="p-8 md:p-12">
           {/* Icon */}
@@ -55,6 +67,7 @@ export default function RegionBlockedPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
