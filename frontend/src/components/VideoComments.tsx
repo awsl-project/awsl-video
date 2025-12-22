@@ -3,7 +3,7 @@ import { Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
 import { userApi } from '@/api';
 import type { Comment, PaginatedComments } from '@/types/user';
@@ -97,6 +97,13 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
           {/* 主评论 */}
           <div className="flex gap-3">
             <Avatar className="h-10 w-10 flex-shrink-0">
+              {comment.user.avatar_url && (
+                <AvatarImage
+                  src={comment.user.avatar_url}
+                  alt={comment.user.name || comment.user.username}
+                  className="object-cover"
+                />
+              )}
               <AvatarFallback className="bg-gradient-to-br from-pink-400 to-pink-600 text-white font-semibold">
                 {getInitial(comment.user.name || comment.user.username)}
               </AvatarFallback>
@@ -145,6 +152,13 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
     return (
       <div key={comment.id} className="flex gap-3">
         <Avatar className="h-8 w-8 flex-shrink-0">
+          {comment.user.avatar_url && (
+            <AvatarImage
+              src={comment.user.avatar_url}
+              alt={comment.user.name || comment.user.username}
+              className="object-cover"
+            />
+          )}
           <AvatarFallback className="bg-gradient-to-br from-purple-400 to-purple-600 text-white font-semibold text-xs">
             {getInitial(comment.user.name || comment.user.username)}
           </AvatarFallback>
@@ -212,6 +226,13 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
         <div className="flex gap-3">
           {user && (
             <Avatar className="h-10 w-10">
+              {user.avatar_url && (
+                <AvatarImage
+                  src={user.avatar_url}
+                  alt={user.name || user.username}
+                  className="object-cover"
+                />
+              )}
               <AvatarFallback className="bg-gradient-to-br from-pink-400 to-pink-600 text-white font-semibold">
                 {(user.name || user.username).charAt(0).toUpperCase()}
               </AvatarFallback>

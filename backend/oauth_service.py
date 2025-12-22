@@ -71,7 +71,7 @@ class GitHubOAuthProvider(OAuthProvider):
                 "oauth_id": str(user_data["id"]),
                 "username": user_data["login"],
                 "name": user_data.get("name"),
-                "avatar_url": None,  # 不再使用头像URL
+                "avatar_url": user_data.get("avatar_url"),  # GitHub 用户头像
                 "email": user_data.get("email"),
             }
 
@@ -132,11 +132,21 @@ class LinuxDoOAuthProvider(OAuthProvider):
                     user_data = response.json()
                     logger.info(f"User data received: {user_data.get('username', 'unknown')}")
 
+                    # Linux.do 使用 avatar_template 字段，需要替换 {size} 参数
+                    avatar_template = user_data.get("avatar_template")
+                    avatar_url = None
+                    if avatar_template:
+                        # 将 {size} 替换为实际尺寸，例如 120
+                        avatar_url = avatar_template.replace("{size}", "120")
+                        # 如果是相对路径，添加 Linux.do 域名
+                        if avatar_url.startswith("/"):
+                            avatar_url = f"https://connect.linux.do{avatar_url}"
+
                     return {
                         "oauth_id": str(user_data["id"]),
                         "username": user_data["username"],
                         "name": user_data.get("name"),
-                        "avatar_url": None,  # 不再使用头像URL
+                        "avatar_url": avatar_url,  # Linux.do 用户头像
                         "email": None,  # Linux.do doesn't provide email
                     }
 

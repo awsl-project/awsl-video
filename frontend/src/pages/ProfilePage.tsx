@@ -4,7 +4,7 @@ import { User, Mail, Calendar, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -58,6 +58,13 @@ export default function ProfilePage() {
             <CardContent>
               <div className="flex items-start gap-6">
                 <Avatar className="h-24 w-24">
+                  {user.avatar_url && (
+                    <AvatarImage
+                      src={user.avatar_url}
+                      alt={displayName}
+                      className="object-cover"
+                    />
+                  )}
                   <AvatarFallback className="bg-gradient-to-br from-pink-400 to-pink-600 text-white font-semibold text-4xl">
                     {initial}
                   </AvatarFallback>

@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 
@@ -42,6 +42,13 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10">
+            {user.avatar_url && (
+              <AvatarImage
+                src={user.avatar_url}
+                alt={displayName}
+                className="object-cover"
+              />
+            )}
             <AvatarFallback className="bg-gradient-to-br from-pink-400 to-pink-600 text-white font-semibold text-lg">
               {initial}
             </AvatarFallback>
