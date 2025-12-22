@@ -1,9 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Trash2, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
 import { userApi } from '@/api';
 import type { Comment, PaginatedComments } from '@/types/user';
@@ -24,6 +40,9 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
   const [submitting, setSubmitting] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<number | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadComments();
@@ -80,6 +99,35 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
     }
   };
 
+  const handleDeleteClick = (commentId: number) => {
+    setCommentToDelete(commentId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!commentToDelete) return;
+
+    setDeleting(true);
+    try {
+      await userApi.deleteComment(commentToDelete);
+      await loadComments();
+      toast({
+        title: '删除成功',
+        description: '评论已删除',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: '删除失败',
+        description: error.response?.data?.detail || '删除评论失败，请重试',
+      });
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+      setCommentToDelete(null);
+    }
+  };
+
   const renderComment = (comment: Comment, level = 0) => {
     const timeAgo = formatDistanceToNow(new Date(comment.created_at), {
       addSuffix: true,
@@ -109,12 +157,32 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 space-y-2 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm">{comment.user.name || comment.user.username}</span>
-                <span className="text-xs text-muted-foreground">{timeAgo}</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">{comment.user.name || comment.user.username}</span>
+                  <span className="text-xs text-muted-foreground">{timeAgo}</span>
+                </div>
+                {!comment.is_deleted && user && user.id === comment.user.id && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(comment.id)}
+                        className="text-red-600 focus:text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        删除评论
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
               {comment.is_deleted ? (
-                <p className="text-sm text-muted-foreground italic">[评论已删除]</p>
+                <p className="text-sm text-muted-foreground italic">[此评论已删除]</p>
               ) : (
                 <>
                   <p className="text-sm whitespace-pre-wrap break-words">{comment.content}</p>
@@ -164,12 +232,32 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 space-y-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-xs">{comment.user.name || comment.user.username}</span>
-            <span className="text-xs text-muted-foreground">{timeAgo}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-xs">{comment.user.name || comment.user.username}</span>
+              <span className="text-xs text-muted-foreground">{timeAgo}</span>
+            </div>
+            {!comment.is_deleted && user && user.id === comment.user.id && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => handleDeleteClick(comment.id)}
+                    className="text-red-600 focus:text-red-600 cursor-pointer text-xs"
+                  >
+                    <Trash2 className="mr-2 h-3 w-3" />
+                    删除评论
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
           {comment.is_deleted ? (
-            <p className="text-xs text-muted-foreground italic">[评论已删除]</p>
+            <p className="text-xs text-muted-foreground italic">[此评论已删除]</p>
           ) : (
             <>
               <p className="text-xs whitespace-pre-wrap break-words">{comment.content}</p>
@@ -275,6 +363,35 @@ export function VideoComments({ videoId }: VideoCommentsProps) {
           </p>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除评论</AlertDialogTitle>
+            <AlertDialogDescription>
+              此操作无法撤销。删除后评论内容将被隐藏，但如果有回复则评论仍会显示为"[此评论已删除]"。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  删除中...
+                </>
+              ) : (
+                '确认删除'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

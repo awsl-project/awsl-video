@@ -33,7 +33,7 @@ def build_comment_tree(comments: List[models.Comment], users_dict: dict) -> List
             user=CommentUser.from_orm(user),
             video_id=comment.video_id,
             parent_id=comment.parent_id,
-            content=comment.content if not comment.is_deleted else "[Comment deleted]",
+            content=comment.content if not comment.is_deleted else "[此评论已删除]",
             is_deleted=comment.is_deleted,
             created_at=comment.created_at,
             updated_at=comment.updated_at,
