@@ -4,6 +4,7 @@ import VideoPlayerPage from './pages/VideoPlayerPage';
 import LoginPage from './pages/LoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminVideoEditPage from './pages/AdminVideoEditPage';
+import AdminUsersPage from './pages/AdminUsersPage';
 import UserLoginPage from './pages/UserLoginPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import WatchHistoryPage from './pages/WatchHistoryPage';
@@ -31,6 +32,7 @@ function App() {
           <Route path="/region-blocked" element={<RegionBlockedPage />} />
           <Route path="/admin/login" element={<LoginPage />} />
           <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/edit/:videoId" element={<AdminVideoEditPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

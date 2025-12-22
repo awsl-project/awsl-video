@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Plus, Video as VideoIcon, Home, Search as SearchIcon } from 'lucide-react';
+import { LogOut, Plus, Video as VideoIcon, Home, Search as SearchIcon, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +19,7 @@ export default function AdminDashboardPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState('');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   // Form state
   const [videoTitle, setVideoTitle] = useState('');
@@ -28,11 +29,37 @@ export default function AdminDashboardPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
+    const adminToken = localStorage.getItem('admin_token');
+    const userToken = localStorage.getItem('user_token');
+    const userStr = localStorage.getItem('user');
+
+    // Check if user has admin access
+    let hasAdminAccess = false;
+    let isSuperAdminUser = false;
+
+    if (adminToken) {
+      // Super admin with fixed password login
+      hasAdminAccess = true;
+      isSuperAdminUser = true;
+    } else if (userToken && userStr) {
+      // OAuth admin (is_admin=true)
+      try {
+        const user = JSON.parse(userStr);
+        if (user.is_admin) {
+          hasAdminAccess = true;
+          isSuperAdminUser = false;
+        }
+      } catch (e) {
+        console.error('Failed to parse user data', e);
+      }
+    }
+
+    if (!hasAdminAccess) {
       navigate('/admin/login');
       return;
     }
+
+    setIsSuperAdmin(isSuperAdminUser);
     fetchCategories();
     fetchVideos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,8 +102,15 @@ export default function AdminDashboardPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    navigate('/admin/login');
+    const adminToken = localStorage.getItem('admin_token');
+    if (adminToken) {
+      // Super admin logout
+      localStorage.removeItem('admin_token');
+      navigate('/admin/login');
+    } else {
+      // OAuth admin logout - go to home page
+      navigate('/');
+    }
   };
 
   const handleVideoClick = (videoId: number) => {
@@ -122,7 +156,30 @@ export default function AdminDashboardPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
-          <h1 className="text-xl font-bold text-primary">管理后台</h1>
+          <div className="flex items-center gap-6">
+            <h1 className="text-xl font-bold text-primary">管理后台</h1>
+            <nav className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary hover:text-primary font-medium"
+              >
+                <VideoIcon className="h-4 w-4 mr-2" />
+                视频管理
+              </Button>
+              {isSuperAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-primary"
+                  onClick={() => navigate('/admin/users')}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  用户管理
+                </Button>
+              )}
+            </nav>
+          </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => navigate('/')}>
               <Home className="h-4 w-4 mr-2" />

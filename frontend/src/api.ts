@@ -11,6 +11,7 @@ import type {
   VideoStats,
   Comment,
   PaginatedComments,
+  PaginatedUsers,
 } from '@/types/user';
 
 // Re-export types for convenience
@@ -145,6 +146,16 @@ export const videoApi = {
 
   finalizeVideoUpload: (episodeId: number, chunks: any[]) =>
     api.post(`/admin-api/episodes/${episodeId}/upload/finalize`, { chunks }),
+
+  // User Management APIs (Super Admin only)
+  getUsers: (page = 1, pageSize = 20, search = '') =>
+    api.get<PaginatedUsers>('/admin-api/users', { params: { page, page_size: pageSize, search } }),
+
+  grantAdmin: (userId: number) =>
+    api.post<{ success: boolean; message: string }>(`/admin-api/users/${userId}/admin`),
+
+  revokeAdmin: (userId: number) =>
+    api.delete<{ success: boolean; message: string }>(`/admin-api/users/${userId}/admin`),
 };
 
 // User API functions

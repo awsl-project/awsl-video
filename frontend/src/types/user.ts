@@ -39,6 +39,7 @@ export interface UserProfile {
   avatar_url?: string;
   email?: string;
   is_active: boolean;
+  is_admin: boolean;
   created_at: string;
   last_login: string;
 }
@@ -91,4 +92,25 @@ export interface PaginatedComments {
   page: number;
   page_size: number;
   comments: Comment[];
+}
+
+// User Management Types (Admin)
+export interface UserListItem {
+  id: number;
+  username: string;
+  name?: string;
+  avatar_url?: string;
+  oauth_provider: string;
+  email?: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+  last_login: string;
+}
+
+export interface PaginatedUsers {
+  total: number;
+  page: number;
+  page_size: number;
+  users: UserListItem[];
 }

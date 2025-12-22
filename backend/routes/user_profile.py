@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def get_current_user_profile(
     current_user: models.User = Depends(get_current_user_required)
 ):
-    """Get current user profile"""
+    """Get current user profile with admin status"""
     return UserProfile.from_orm(current_user)
 
 

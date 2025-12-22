@@ -8,9 +8,11 @@ from ..models import Video, Episode, VideoChunk
 from ..schemas import (
     VideoCreate, VideoUpdate, Video as VideoSchema,
     VideoWithEpisodes, EpisodeCreate, Episode as EpisodeSchema,
-    UploadResponse, FinalizeVideoUploadRequest
+    UploadResponse, FinalizeVideoUploadRequest,
+    UserListItem, PaginatedUsers, UpdateUserAdminRequest
 )
-from ..auth import get_current_admin
+from ..auth import get_current_admin, get_any_admin
+from ..models import User
 from ..storage import telegram_storage
 from ..config import settings
 import httpx
@@ -25,10 +27,10 @@ router = APIRouter(prefix="/admin-api", tags=["Admin"])
 @router.post("/videos", response_model=VideoSchema)
 async def create_video(
     video: VideoCreate,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new video"""
+    """Create a new video (accessible to super admin and OAuth admin)"""
     db_video = Video(**video.model_dump())
     db.add(db_video)
     await db.commit()
@@ -39,10 +41,10 @@ async def create_video(
 @router.get("/videos/{video_id}", response_model=VideoWithEpisodes)
 async def get_video(
     video_id: int,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get video by ID with episodes"""
+    """Get video by ID with episodes (accessible to super admin and OAuth admin)"""
     result = await db.execute(
         select(Video).where(Video.id == video_id)
     )
@@ -63,10 +65,10 @@ async def get_video(
 async def update_video(
     video_id: int,
     video_update: VideoUpdate,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update video information"""
+    """Update video information (accessible to super admin and OAuth admin)"""
     result = await db.execute(
         select(Video).where(Video.id == video_id)
     )
@@ -86,10 +88,10 @@ async def update_video(
 @router.delete("/videos/{video_id}")
 async def delete_video(
     video_id: int,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a video and all its episodes"""
+    """Delete a video and all its episodes (accessible to super admin and OAuth admin)"""
     result = await db.execute(
         select(Video).where(Video.id == video_id)
     )
@@ -106,10 +108,10 @@ async def delete_video(
 async def create_episode(
     video_id: int,
     episode: EpisodeCreate,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new episode for a video"""
+    """Create a new episode for a video (accessible to super admin and OAuth admin)"""
     # Check if video exists
     result = await db.execute(
         select(Video).where(Video.id == video_id)
@@ -130,10 +132,10 @@ async def update_episode(
     episode_id: int,
     episode_number: Optional[int] = None,
     title: Optional[str] = None,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update episode information"""
+    """Update episode information (accessible to super admin and OAuth admin)"""
     result = await db.execute(
         select(Episode).where(Episode.id == episode_id)
     )
@@ -154,10 +156,10 @@ async def update_episode(
 @router.delete("/episodes/{episode_id}")
 async def delete_episode(
     episode_id: int,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete an episode"""
+    """Delete an episode (accessible to super admin and OAuth admin)"""
     result = await db.execute(
         select(Episode).where(Episode.id == episode_id)
     )
@@ -174,10 +176,10 @@ async def delete_episode(
 async def upload_cover(
     file: UploadFile = File(...),
     media_type: str = Form("photo"),
-    current_admin: dict = Depends(get_current_admin)
+    current_admin = Depends(get_any_admin)
 ):
     """
-    Upload cover image to Telegram storage.
+    Upload cover image to Telegram storage (accessible to super admin and OAuth admin).
     File size must be within 2MB.
     """
     # Check file size (2MB limit)
@@ -201,11 +203,11 @@ async def upload_cover(
 async def upload_video_cover(
     video_id: int,
     cover: UploadFile = File(...),
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Upload and associate cover image with a specific video.
+    Upload and associate cover image with a specific video (accessible to super admin and OAuth admin).
     File size must be within 2MB.
     """
     # Check if video exists
@@ -245,10 +247,10 @@ async def upload_video_cover(
 
 @router.get("/upload/token")
 async def generate_upload_token(
-    current_admin: dict = Depends(get_current_admin)
+    current_admin = Depends(get_any_admin)
 ):
     """
-    Generate a temporary JWT token for direct upload to awsl-telegram-storage.
+    Generate a temporary JWT token for direct upload to awsl-telegram-storage (accessible to super admin and OAuth admin).
     Token expires in 1 hour (3600 seconds).
     Uses CHAT_ID from environment configuration.
 
@@ -294,11 +296,11 @@ async def generate_upload_token(
 async def finalize_episode_upload(
     episode_id: int,
     request: FinalizeVideoUploadRequest,
-    current_admin: dict = Depends(get_current_admin),
+    current_admin = Depends(get_any_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Finalize video upload by storing chunk information after frontend direct upload.
+    Finalize video upload by storing chunk information after frontend direct upload (accessible to super admin and OAuth admin).
 
     Args:
         episode_id: Episode ID
@@ -341,4 +343,115 @@ async def finalize_episode_upload(
         "message": f"Successfully saved {len(request.chunks)} chunks",
         "episode_id": episode_id,
         "chunks_count": len(request.chunks)
+    }
+
+
+# User Management APIs (Super Admin Only)
+@router.get("/users", response_model=PaginatedUsers)
+async def list_users(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = "",
+    current_admin: dict = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all users with pagination and search.
+    Only accessible to super admin (fixed password login).
+    """
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 20
+
+    offset = (page - 1) * page_size
+
+    # Build query
+    query = select(User)
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            (User.username.ilike(search_pattern)) |
+            (User.name.ilike(search_pattern)) |
+            (User.email.ilike(search_pattern))
+        )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar()
+
+    # Get users
+    query = query.order_by(User.created_at.desc()).offset(offset).limit(page_size)
+    result = await db.execute(query)
+    users = result.scalars().all()
+
+    return PaginatedUsers(
+        total=total,
+        page=page,
+        page_size=page_size,
+        users=[UserListItem.from_orm(user) for user in users]
+    )
+
+
+@router.post("/users/{user_id}/admin")
+async def grant_admin(
+    user_id: int,
+    current_admin: dict = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Grant admin rights to a user.
+    Only accessible to super admin (fixed password login).
+    """
+    # Get user
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Grant admin rights
+    user.is_admin = True
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "success": True,
+        "message": f"Admin rights granted to {user.username}",
+        "user": UserListItem.from_orm(user)
+    }
+
+
+@router.delete("/users/{user_id}/admin")
+async def revoke_admin(
+    user_id: int,
+    current_admin: dict = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Revoke admin rights from a user.
+    Only accessible to super admin (fixed password login).
+    """
+    # Get user
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Revoke admin rights
+    user.is_admin = False
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "success": True,
+        "message": f"Admin rights revoked from {user.username}",
+        "user": UserListItem.from_orm(user)
     }

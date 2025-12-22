@@ -92,6 +92,7 @@ class UserProfile(UserBase):
     oauth_provider: str
     email: Optional[str] = None
     is_active: bool
+    is_admin: bool = False
     created_at: datetime
     last_login: datetime
 
@@ -198,3 +199,31 @@ class VideoChunkInfo(BaseModel):
 
 class FinalizeVideoUploadRequest(BaseModel):
     chunks: List[VideoChunkInfo]
+
+
+# User Management Schemas (Admin)
+class UserListItem(BaseModel):
+    id: int
+    username: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    oauth_provider: str
+    email: Optional[str] = None
+    is_active: bool
+    is_admin: bool
+    created_at: datetime
+    last_login: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PaginatedUsers(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    users: List[UserListItem]
+
+
+class UpdateUserAdminRequest(BaseModel):
+    is_admin: bool

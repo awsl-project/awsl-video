@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { LogOut, User, Heart, History } from 'lucide-react';
+import { LogOut, User, Heart, History, Shield } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,6 +85,17 @@ export function UserMenu() {
             <span>观看历史</span>
           </Link>
         </DropdownMenuItem>
+        {user.is_admin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/admin" className="cursor-pointer text-primary">
+                <Shield className="mr-2 h-4 w-4" />
+                <span>管理后台</span>
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />

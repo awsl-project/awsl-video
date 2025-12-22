@@ -166,3 +166,68 @@ async def get_current_user_required(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
+async def get_current_admin_user(
+    user: models.User = Depends(get_current_user_required)
+) -> models.User:
+    """Get current authenticated OAuth admin user (required)
+
+    OAuth admin users (is_admin=true) can manage videos but cannot manage users.
+    This is for regular admins who login via OAuth (GitHub/Linux.do).
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user
+
+
+async def get_any_admin(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get any admin (super admin or OAuth admin)
+
+    Used for video management endpoints that should be accessible to both:
+    - Super admin (fixed password login, no User record)
+    - OAuth admin (OAuth login, is_admin=true)
+
+    Returns dict for super admin, User object for OAuth admin.
+    """
+    # First try super admin token (X-Admin-Authorization header)
+    admin_token = get_admin_token_from_header(request)
+    if admin_token:
+        try:
+            payload = verify_token(admin_token)
+            username: str = payload.get("sub")
+            if username and username == settings.ADMIN_USERNAME:
+                return {"username": username, "type": "super_admin"}
+        except JWTError:
+            pass
+
+    # Then try OAuth admin (Authorization header with is_admin=true)
+    security_scheme = HTTPBearer(auto_error=False)
+    credentials = await security_scheme(request)
+    if credentials:
+        try:
+            payload = verify_token(credentials.credentials)
+            user_id = payload.get("sub")
+            token_type = payload.get("type")
+
+            if token_type == "user" and user_id:
+                result = await db.execute(
+                    select(models.User).where(models.User.id == int(user_id))
+                )
+                user = result.scalar_one_or_none()
+
+                if user and user.is_active and user.is_admin:
+                    return user
+        except (JWTError, ValueError):
+            pass
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required",
+    )
+
